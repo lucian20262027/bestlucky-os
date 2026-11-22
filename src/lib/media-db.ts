@@ -41,10 +41,10 @@ export async function saveLocalMedia(file: File): Promise<{
   try {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const blob = await upload(`loopos/${Date.now()}-${safeName}`, file, {
-      access: 'public',
+      access: 'private',
       handleUploadUrl: '/api/sync/upload',
     });
-    cloudUrl = blob.url;
+    cloudUrl = `/api/sync/blob?url=${encodeURIComponent(blob.url)}`;
   } catch {
     // Vercel Blob not configured or offline — keep local IndexedDB seamlessly
   }
