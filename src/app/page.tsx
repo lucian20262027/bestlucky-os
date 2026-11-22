@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   BookMarked,
@@ -15,11 +15,8 @@ import {
 import { AffirmationVideoStrip } from '@/components/AffirmationVideoStrip';
 import { useApp } from '@/components/AppProvider';
 import { QuestionModal } from '@/components/QuestionModal';
+import { QuickLaunchDock } from '@/components/QuickLaunchDock';
 import { RareFolderCard } from '@/components/RareFolderCard';
-import {
-  type CalendarEventItem,
-  ScheduleCalendarPanel,
-} from '@/components/ScheduleCalendarPanel';
 import { TodoWorkspacePanel } from '@/components/TodoWorkspacePanel';
 import { WarmupModal } from '@/components/WarmupModal';
 import { getDailyQuote } from '@/lib/daily-quotes';
@@ -30,8 +27,6 @@ export default function DashboardPage() {
     state,
     mounted,
     todayISO,
-    addUpcomingLoop,
-    removeUpcomingLoop,
     addCustomQuestion,
     updateQuestionNotes,
     addTodo,
@@ -39,49 +34,11 @@ export default function DashboardPage() {
     toggleTodo,
     deleteTodo,
     updateAffirmationVideos,
-    updateGoogleCalendarUrl,
   } = useApp();
 
   const [quoteOffset, setQuoteOffset] = useState(0);
   const [addQuestionOpen, setAddQuestionOpen] = useState(false);
   const [warmupOpen, setWarmupOpen] = useState(false);
-
-  // Google Calendar ICS sync state
-  const [gcalEvents, setGcalEvents] = useState<CalendarEventItem[]>([]);
-  const [gcalLoading, setGcalLoading] = useState(false);
-  const [gcalError, setGcalError] = useState<string | null>(null);
-
-  const fetchGcalEvents = useCallback(async (icsUrl: string) => {
-    if (!icsUrl.trim()) return;
-    setGcalLoading(true);
-    setGcalError(null);
-    try {
-      const res = await fetch('/api/calendar/ics', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ icsUrl: icsUrl.trim() }),
-      });
-      const json = (await res.json()) as {
-        events?: CalendarEventItem[];
-        error?: string;
-      };
-      if (!res.ok) {
-        setGcalError(json.error ?? '日历拉取失败');
-      } else {
-        setGcalEvents(json.events ?? []);
-      }
-    } catch {
-      setGcalError('无法连接日历服务');
-    } finally {
-      setGcalLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (mounted && state.googleCalendarIcsUrl) {
-      void fetchGcalEvents(state.googleCalendarIcsUrl);
-    }
-  }, [mounted, state.googleCalendarIcsUrl, fetchGcalEvents]);
 
   const greetingText = useMemo(() => {
     const displayName =
@@ -116,15 +73,6 @@ export default function DashboardPage() {
     u.lang = 'en-US';
     u.rate = 0.9;
     window.speechSynthesis.speak(u);
-  };
-
-  const handleSaveGcalUrl = (url: string) => {
-    updateGoogleCalendarUrl(url);
-    if (url) {
-      void fetchGcalEvents(url);
-    } else {
-      setGcalEvents([]);
-    }
   };
 
   return (
@@ -202,20 +150,8 @@ export default function DashboardPage() {
         onSaveVideos={updateAffirmationVideos}
       />
 
-      {/* Row 3: Full-Width Native Google Calendar & Schedule */}
-      <ScheduleCalendarPanel
-        mounted={mounted}
-        todayISO={todayISO}
-        upcomingLoops={state.upcomingLoops}
-        googleCalendarIcsUrl={state.googleCalendarIcsUrl}
-        gcalEvents={gcalEvents}
-        gcalLoading={gcalLoading}
-        gcalError={gcalError}
-        onRefreshGcal={() => void fetchGcalEvents(state.googleCalendarIcsUrl ?? '')}
-        onSaveGcalUrl={handleSaveGcalUrl}
-        onAddLoop={addUpcomingLoop}
-        onRemoveLoop={removeUpcomingLoop}
-      />
+      {/* Row 3: Quick Launchpad (Gmail, GCal, LinkedIn, X, Doubao, DeepSeek, Gemini) */}
+      <QuickLaunchDock />
 
       {/* Row 4: Full-Width Benchmarked Prep Todo Workspace */}
       <TodoWorkspacePanel
