@@ -48,7 +48,7 @@ function getLangInstruction(language: LanguageMode): string {
 
 export async function POST(req: NextRequest) {
   let body: {
-    action?: 'interviewer_turn' | 'evaluate_session' | 'generate_loop' | 'analyze_vocab';
+    action?: 'interviewer_turn' | 'evaluate_session' | 'generate_loop' | 'analyze_vocab' | 'dashboard_ask';
     model?: string;
     language?: LanguageMode;
     payload?: Record<string, unknown>;
@@ -73,6 +73,31 @@ export async function POST(req: NextRequest) {
   const apiKey = headerKey || envKey || '';
 
   const runFallback = async (warning?: string) => {
+    if (action === 'dashboard_ask') {
+      const q = String(payload.query ?? '').trim();
+      const lower = q.toLowerCase();
+      const links: Array<{ label: string; href: string }> = [];
+      let answer = '';
+
+      if (lower.includes('openai') || lower.includes('anthropic') || lower.includes('palantir') || lower.includes('nvidia') || lower.includes('jd') || lower.includes('role')) {
+        answer = `针对 "${q}"：建议先用「JD Study Plan」粘贴目标岗位 JD 生成专属冲刺题单，并在「7-Role Playbook」切换对应思维模式（如 FDE 强调 Week-2 垂直切片交付，AI PM 强调 Eval 护栏与路由治理）。`;
+        links.push({ label: '生成 JD 定制冲刺计划', href: '/customizer' });
+        links.push({ label: '查看 7-Role 岗位思维卡', href: '/frameworks' });
+      } else if (lower.includes('soundbite') || lower.includes('vocab') || lower.includes('单词') || lower.includes('金句') || lower.includes('knowledge')) {
+        answer = `你可以在 Knowledge Hub 中复习 3 条高频 AI 架构/反问金句，并使用单词本的一键发音功能跟读难词。`;
+        links.push({ label: '打开 Knowledge Hub', href: '/knowledge' });
+      } else if (lower.includes('lark') || lower.includes('飞书') || lower.includes('video') || lower.includes('story')) {
+        answer = `可以在 Story Bank 中管理 STAR+L 故事、视频复盘或一键导入飞书文档/多维表格。`;
+        links.push({ label: '进入 Story Bank', href: '/stories' });
+        links.push({ label: '飞书一键导入', href: '/import' });
+      } else {
+        answer = `已收到你的问题 "${q}"：你可以直接进入题库按岗位筛选高频真题，或在 Mock Room 开启实时 AI 面试演练（在左下角 Settings 填入 Gemini API Key 后，这里还可直接进行全库深度问答）。`;
+        links.push({ label: '刷 7 赛道真题', href: '/questions' });
+        links.push({ label: '进入 AI Mock Room', href: '/practice' });
+        links.push({ label: 'JD Study Plan', href: '/customizer' });
+      }
+      return NextResponse.json({ mode: 'local_fallback', warning, data: { answer, links } });
+    }
     if (action === 'analyze_vocab') {
       const word = String(payload.word ?? '').trim();
       const data = await analyzeVocabFallback(word);
@@ -122,6 +147,45 @@ export async function POST(req: NextRequest) {
 
   try {
     const ai = new GoogleGenAI({ apiKey });
+
+    if (action === 'dashboard_ask') {
+      const q = String(payload.query ?? '').trim();
+      if (!q) {
+        return NextResponse.json({ error: 'Query is required' }, { status: 400 });
+      }
+      const interaction = await ai.interactions.create({
+        model: chosenModel,
+        input: `You are Lucian's personal Interview Copilot inside LoopOS (targeting FDE, FDPM, AI PM, PM, Operations, Program Manager, Consulting roles at Anthropic, OpenAI, Palantir, NVIDIA, Stripe, McKinsey).
+User question: "${q}"
+${getLangInstruction(language)}
+Return strict JSON:
+- answer: Crisp, actionable 2-4 sentence answer directly addressing the user's question with concrete interview tactics.
+- links: 2-3 relevant internal navigation links chosen ONLY from: [{"label": "...", "href": "/questions"}, {"label": "...", "href": "/customizer"}, {"label": "...", "href": "/knowledge"}, {"label": "...", "href": "/frameworks"}, {"label": "...", "href": "/stories"}, {"label": "...", "href": "/practice"}]`,
+        response_mime_type: 'application/json',
+        response_format: {
+          type: 'object',
+          properties: {
+            answer: { type: 'string' },
+            links: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  label: { type: 'string' },
+                  href: { type: 'string' },
+                },
+                required: ['label', 'href'],
+              },
+            },
+          },
+          required: ['answer', 'links'],
+        },
+        store: false,
+      });
+      const raw = stripCodeFences(interaction.output_text ?? '');
+      const parsed = JSON.parse(raw);
+      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: parsed });
+    }
 
     if (action === 'analyze_vocab') {
       const word = String(payload.word ?? '').trim();

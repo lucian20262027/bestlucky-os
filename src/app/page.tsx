@@ -1,28 +1,48 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
+  BookMarked,
   BookOpen,
-  Briefcase,
   Calendar,
-  ChevronRight,
+  Check,
+  CheckSquare,
+  ExternalLink,
   FileUp,
   Flame,
-  GraduationCap,
+  Loader2,
   MessageSquare,
   Play,
   Plus,
+  RefreshCw,
   Sparkles,
+  Square,
   Trash2,
+  X,
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import { QuestionModal } from '@/components/QuestionModal';
 import { daysUntil, getAllQuestions, roleBadgeClasses } from '@/lib/helpers';
 import { ROLE_LIST, ROLES_BY_ID } from '@/lib/roles';
 import { CourseSyllabus, RoleTrack } from '@/lib/types';
+
+interface CalendarEventItem {
+  id: string;
+  summary: string;
+  startISO: string;
+  dateLabel: string;
+  timeLabel: string;
+  location?: string;
+}
+
+interface CopilotReply {
+  query: string;
+  answer: string;
+  links: Array<{ label: string; href: string }>;
+  mode?: string;
+}
 
 function computeCourseStats(course?: CourseSyllabus) {
   if (!course) return { total: 0, done: 0, pct: 0, nextTitle: 'Start learning' };
@@ -42,8 +62,20 @@ function computeCourseStats(course?: CourseSyllabus) {
   return { total, done, pct, nextTitle: nextTitle || course.modules[0]?.title || 'Course Intro' };
 }
 
+function buildGoogleCalendarUrl(title: string, dateISO: string, details: string): string {
+  const compactDate = dateISO.replace(/-/g, '');
+  const start = `${compactDate}T100000`;
+  const end = `${compactDate}T110000`;
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: title,
+    dates: `${start}/${end}`,
+    details,
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 export default function DashboardPage() {
-  const router = useRouter();
   const {
     state,
     mounted,
@@ -53,9 +85,22 @@ export default function DashboardPage() {
     removeUpcomingLoop,
     addCustomQuestion,
     updateQuestionNotes,
+    addTodo,
+    toggleTodo,
+    deleteTodo,
+    updateGoogleCalendarUrl,
   } = useApp();
 
+  // Copilot state
   const [studyPrompt, setStudyPrompt] = useState('');
+  const [copilotLoading, setCopilotLoading] = useState(false);
+  const [copilotReply, setCopilotReply] = useState<CopilotReply | null>(null);
+
+  // Todo state
+  const [newTodoTitle, setNewTodoTitle] = useState('');
+  const [newTodoRole, setNewTodoRole] = useState<RoleTrack>('fde');
+
+  // Goals & Loops state
   const [editingGoals, setEditingGoals] = useState(false);
   const [goalsSummary, setGoalsSummary] = useState('');
   const [goalsCompanies, setGoalsCompanies] = useState('');
@@ -67,6 +112,13 @@ export default function DashboardPage() {
   const [newRound, setNewRound] = useState('System & Problem Decomposition');
   const [newDate, setNewDate] = useState('2026-11-28');
 
+  // Google Calendar ICS sync state
+  const [showGcalSetup, setShowGcalSetup] = useState(false);
+  const [gcalInput, setGcalInput] = useState('');
+  const [gcalEvents, setGcalEvents] = useState<CalendarEventItem[]>([]);
+  const [gcalLoading, setGcalLoading] = useState(false);
+  const [gcalError, setGcalError] = useState<string | null>(null);
+
   useEffect(() => {
     if (todayISO) {
       const targetMs = Date.parse(`${todayISO}T00:00:00Z`) + 7 * 86400000;
@@ -74,12 +126,46 @@ export default function DashboardPage() {
     }
   }, [todayISO]);
 
+  const fetchGcalEvents = useCallback(async (icsUrl: string) => {
+    if (!icsUrl.trim()) return;
+    setGcalLoading(true);
+    setGcalError(null);
+    try {
+      const res = await fetch('/api/calendar/ics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ icsUrl: icsUrl.trim() }),
+      });
+      const json = (await res.json()) as {
+        events?: CalendarEventItem[];
+        error?: string;
+      };
+      if (!res.ok) {
+        setGcalError(json.error ?? '日历拉取失败');
+      } else {
+        setGcalEvents(json.events ?? []);
+      }
+    } catch {
+      setGcalError('无法连接日历服务');
+    } finally {
+      setGcalLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mounted && state.googleCalendarIcsUrl) {
+      setGcalInput(state.googleCalendarIcsUrl);
+      void fetchGcalEvents(state.googleCalendarIcsUrl);
+    }
+  }, [mounted, state.googleCalendarIcsUrl, fetchGcalEvents]);
+
   const greetingText = useMemo(() => {
-    if (!mounted) return `Welcome back, ${state.profile.name}`;
+    const displayName = state.profile.name && state.profile.name !== 'Yi' ? state.profile.name : 'Lucian';
+    if (!mounted) return `Welcome back, ${displayName}`;
     const hr = new Date().getHours();
-    if (hr < 12) return `Good morning, ${state.profile.name}`;
-    if (hr < 18) return `Good afternoon, ${state.profile.name}`;
-    return `Good evening, ${state.profile.name}`;
+    if (hr < 12) return `Good morning, ${displayName}`;
+    if (hr < 18) return `Good afternoon, ${displayName}`;
+    return `Good evening, ${displayName}`;
   }, [mounted, state.profile.name]);
 
   const activeCourseRole: RoleTrack =
@@ -88,6 +174,10 @@ export default function DashboardPage() {
   const activeStats = computeCourseStats(activeCourse);
 
   const allQuestions = useMemo(() => getAllQuestions(state), [state]);
+  const completedTodos = useMemo(
+    () => state.todos.filter((t) => t.completed).length,
+    [state.todos]
+  );
 
   const weekDays = useMemo(() => {
     const labels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -100,7 +190,7 @@ export default function DashboardPage() {
       }));
     }
     const base = new Date(`${todayISO}T00:00:00`);
-    const dayOfWeek = base.getDay(); // 0=Sun
+    const dayOfWeek = base.getDay();
     const sunday = new Date(base);
     sunday.setDate(base.getDate() - dayOfWeek);
 
@@ -117,22 +207,57 @@ export default function DashboardPage() {
     });
   }, [mounted, todayISO, state.practiceDatesISO]);
 
+  const askCopilot = async (rawQuery: string) => {
+    const q = rawQuery.trim();
+    if (!q || copilotLoading) return;
+    setStudyPrompt(q);
+    setCopilotLoading(true);
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (state.aiSettings.geminiApiKey.trim()) {
+        headers['x-gemini-api-key'] = state.aiSettings.geminiApiKey.trim();
+      }
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          action: 'dashboard_ask',
+          model: state.aiSettings.model,
+          language: state.aiSettings.language,
+          payload: { query: q },
+        }),
+      });
+      const json = (await res.json()) as {
+        mode?: string;
+        data?: { answer?: string; links?: Array<{ label: string; href: string }> };
+      };
+      if (res.ok && json.data?.answer) {
+        setCopilotReply({
+          query: q,
+          answer: json.data.answer,
+          links: json.data.links ?? [],
+          mode: json.mode,
+        });
+      }
+    } finally {
+      setCopilotLoading(false);
+    }
+  };
+
   const handleStudyPromptSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = studyPrompt.trim().toLowerCase();
-    if (!trimmed) {
-      router.push('/customizer');
-      return;
-    }
-    if (trimmed.includes('fde')) router.push('/courses/fde');
-    else if (trimmed.includes('fdpm')) router.push('/courses/fdpm');
-    else if (trimmed.includes('ai')) router.push('/courses/ai-pm');
-    else if (trimmed.includes('consult') || trimmed.includes('ebitda'))
-      router.push('/courses/consulting');
-    else if (trimmed.includes('ops') || trimmed.includes('oper'))
-      router.push('/courses/operations');
-    else if (trimmed.includes('pgm') || trimmed.includes('tpm')) router.push('/courses/pgm');
-    else router.push('/customizer');
+    void askCopilot(studyPrompt);
+  };
+
+  const handleAddTodo = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTodoTitle.trim()) return;
+    addTodo({
+      title: newTodoTitle.trim(),
+      role: newTodoRole,
+      dueLabel: 'Today',
+    });
+    setNewTodoTitle('');
   };
 
   const handleOpenGoalsEditor = () => {
@@ -143,94 +268,268 @@ export default function DashboardPage() {
 
   const handleSaveGoals = (e: React.FormEvent) => {
     e.preventDefault();
+    const companies = goalsCompanies
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     updateUserGoals({
       summary: goalsSummary.trim() || state.userGoals.summary,
-      targetCompanies: goalsCompanies
-        .split(',')
-        .map((c) => c.trim())
-        .filter(Boolean),
+      targetCompanies: companies.length > 0 ? companies : state.userGoals.targetCompanies,
     });
     setEditingGoals(false);
   };
 
-  const handleCreateLoop = (e: React.FormEvent) => {
+  const handleAddLoop = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCompany.trim()) return;
     addUpcomingLoop({
       company: newCompany.trim(),
       role: newRole,
-      round: newRound.trim() || 'Full Loop',
+      round: newRound.trim() || 'System & Problem Decomposition',
       dateISO: newDate,
+      notes: '',
     });
     setNewCompany('');
     setShowAddLoop(false);
   };
 
+  const handleSaveGcal = (e: React.FormEvent) => {
+    e.preventDefault();
+    const url = gcalInput.trim();
+    updateGoogleCalendarUrl(url);
+    if (url) {
+      void fetchGcalEvents(url);
+    } else {
+      setGcalEvents([]);
+    }
+    setShowGcalSetup(false);
+  };
+
   return (
     <div className="space-y-6">
-      {/* Greeting Header */}
-      <div>
-        <h1
-          suppressHydrationWarning
-          className="text-2xl font-bold tracking-tight text-[#111118] sm:text-[28px]"
-        >
-          {greetingText}
-        </h1>
-        <p className="mt-1 text-sm text-[#525260]">
-          Jump back into your interview prep and keep up your progress.
-        </p>
+      {/* Greeting + Readiness KPI Strip */}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-[#111118]" suppressHydrationWarning>
+            {greetingText}
+          </h1>
+          <p className="mt-1 text-sm text-[#5E5E6E]">
+            Every focused rep compounds — review your soundbites, check your schedule, and ship today&apos;s prep.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/questions"
+            className="rounded-xl border border-[#ECECF2] bg-white px-3 py-1.5 text-xs font-semibold text-[#111118] transition hover:border-[#6E32F5]"
+          >
+            <span className="text-[#6E32F5]" suppressHydrationWarning>{mounted ? allQuestions.length : 0}</span> Questions
+          </Link>
+          <Link
+            href="/stories"
+            className="rounded-xl border border-[#ECECF2] bg-white px-3 py-1.5 text-xs font-semibold text-[#111118] transition hover:border-[#6E32F5]"
+          >
+            <span className="text-[#6E32F5]" suppressHydrationWarning>{mounted ? state.stories.length : 0}</span> Stories
+          </Link>
+          <Link
+            href="/knowledge"
+            className="rounded-xl border border-[#ECECF2] bg-white px-3 py-1.5 text-xs font-semibold text-[#111118] transition hover:border-[#6E32F5]"
+          >
+            <span className="text-[#6E32F5]" suppressHydrationWarning>{mounted ? state.knowledgeSnippets.length : 0}</span> Soundbites ·{' '}
+            <span className="text-[#6E32F5]" suppressHydrationWarning>{mounted ? state.vocabItems.length : 0}</span> Vocab
+          </Link>
+        </div>
       </div>
 
-      {/* Aced.io Two-Column Layout */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* LEFT 8 COLS */}
+      {/* Main 2-Column Benchmark Layout */}
+      <div className="grid gap-6 lg:grid-cols-12">
+        {/* Left Main Column (70%) */}
         <div className="space-y-5 lg:col-span-8">
-          {/* 1. AI Study Plan Prompt Box */}
-          <form
-            onSubmit={handleStudyPromptSubmit}
-            className="rounded-2xl border border-[#ECECF2] bg-white p-4 shadow-[0_1px_2px_rgba(16,16,24,0.03)]"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F3ECFF] text-[#6E32F5]">
+          {/* Real AI Interview Copilot Bar */}
+          <div className="rounded-2xl border border-[#ECECF2] bg-white p-4 shadow-2xs">
+            <form onSubmit={handleStudyPromptSubmit} className="flex items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F3ECFF] text-[#6E32F5]">
                 <Sparkles className="h-4 w-4" />
               </div>
               <input
+                type="text"
                 value={studyPrompt}
                 onChange={(e) => setStudyPrompt(e.target.value)}
-                placeholder="Create a study plan or jump to a topic (e.g. FDE, AI PM, Consulting)..."
-                className="flex-1 bg-transparent text-sm text-[#111118] placeholder:text-[#848494] focus:outline-none"
+                placeholder="Ask your AI Interview Copilot (e.g. OpenAI FDE prep, NVIDIA TPM reverse Q&A, soundbites)..."
+                className="w-full bg-transparent text-sm text-[#111118] placeholder-[#9E9EAE] focus:outline-none"
               />
               <button
                 type="submit"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#6E32F5] text-white transition hover:opacity-90"
-                aria-label="Go"
+                disabled={copilotLoading || !studyPrompt.trim()}
+                aria-label="Ask AI Copilot"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#6E32F5] text-white transition hover:bg-[#5B24D6] disabled:opacity-50"
               >
-                <ArrowRight className="h-4 w-4" />
+                {copilotLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowRight className="h-4 w-4" />
+                )}
               </button>
-            </div>
+            </form>
 
-            <div className="mt-3.5 flex flex-wrap gap-2 pl-12">
+            <div className="mt-3 flex flex-wrap gap-2">
               {[
-                { label: 'FDE 30-60-90 prep', href: '/courses/fde' },
-                { label: 'AI PM Evals & RAG', href: '/courses/ai-pm' },
-                { label: 'Consulting EBITDA case', href: '/courses/consulting' },
-                { label: 'Custom JD study plan', href: '/customizer' },
-              ].map((pill) => (
-                <Link
-                  key={pill.label}
-                  href={pill.href}
-                  className="rounded-full border border-[#ECECF2] bg-[#FAFAFC] px-3 py-1 text-xs font-medium text-[#525260] transition hover:border-[#D4C5FD] hover:bg-[#F3ECFF] hover:text-[#6E32F5]"
+                'OpenAI FDE 30-60-90 prep',
+                'AI PM guardrails & evals',
+                'NVIDIA TPM reverse Q&A',
+                'Sync Lark interview notes',
+              ].map((chip) => (
+                <button
+                  key={chip}
+                  type="button"
+                  onClick={() => void askCopilot(chip)}
+                  className="rounded-full border border-[#ECECF2] bg-[#FAFAFC] px-3 py-1 text-xs font-medium text-[#5E5E6E] transition hover:border-[#6E32F5]/40 hover:bg-[#F3ECFF] hover:text-[#6E32F5]"
                 >
-                  {pill.label}
-                </Link>
+                  {chip}
+                </button>
               ))}
             </div>
-          </form>
 
-          {/* 2. Continue Learning Card */}
-          <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-[0_1px_2px_rgba(16,16,24,0.03)]">
+            {copilotReply && (
+              <div className="mt-4 rounded-xl border border-[#6E32F5]/20 bg-[#F9F6FF] p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[#6E32F5]">
+                    AI Copilot · {copilotReply.mode === 'live_gemini' ? 'Gemini Live' : 'Instant Assistant'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCopilotReply(null)}
+                    className="rounded-md p-0.5 text-[#848494] hover:text-[#111118]"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <p className="mt-1.5 text-sm leading-relaxed text-[#111118]">
+                  {copilotReply.answer}
+                </p>
+                {copilotReply.links.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {copilotReply.links.map((lnk) => (
+                      <Link
+                        key={lnk.href + lnk.label}
+                        href={lnk.href}
+                        className="inline-flex items-center gap-1 rounded-lg border border-[#6E32F5]/30 bg-white px-2.5 py-1 text-xs font-semibold text-[#6E32F5] transition hover:bg-[#6E32F5] hover:text-white"
+                      >
+                        {lnk.label}
+                        <ArrowRight className="h-3 w-3" />
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Today's Prep Todo List */}
+          <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-2xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <CheckSquare className="h-4 w-4 text-[#6E32F5]" />
+                <h2 className="text-base font-semibold text-[#111118]">Today&apos;s Prep Todo List</h2>
+                <span
+                  suppressHydrationWarning
+                  className="rounded-full bg-[#F3ECFF] px-2 py-0.5 text-[11px] font-semibold text-[#6E32F5]"
+                >
+                  {mounted ? `${completedTodos}/${state.todos.length} done` : '0/0 done'}
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleAddTodo} className="mt-3 flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={newTodoTitle}
+                onChange={(e) => setNewTodoTitle(e.target.value)}
+                placeholder="Add an interview prep task (e.g. Record 2-min intro for Palantir FDE)..."
+                className="min-w-[200px] flex-1 rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-3 py-2 text-xs text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none"
+              />
+              <select
+                value={newTodoRole}
+                onChange={(e) => setNewTodoRole(e.target.value as RoleTrack)}
+                className="rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-2.5 py-2 text-xs font-medium text-[#111118] focus:border-[#6E32F5] focus:outline-none"
+              >
+                {ROLE_LIST.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.shortLabel}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                disabled={!newTodoTitle.trim()}
+                className="inline-flex items-center gap-1 rounded-xl bg-[#6E32F5] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[#5B24D6] disabled:opacity-50"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add
+              </button>
+            </form>
+
+            <div className="mt-3 divide-y divide-[#F0F0F5]">
+              {state.todos.length === 0 ? (
+                <p className="py-4 text-center text-xs text-[#848494]">
+                  No tasks yet — add your first prep goal above.
+                </p>
+              ) : (
+                state.todos.map((todo) => (
+                  <div
+                    key={todo.id}
+                    className="flex items-center justify-between gap-3 py-2.5"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleTodo(todo.id)}
+                      className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                    >
+                      {todo.completed ? (
+                        <Check className="h-4 w-4 shrink-0 rounded bg-[#6E32F5] p-0.5 text-white" />
+                      ) : (
+                        <Square className="h-4 w-4 shrink-0 text-[#9E9EAE]" />
+                      )}
+                      <span
+                        className={`truncate text-sm ${
+                          todo.completed
+                            ? 'text-[#9E9EAE] line-through'
+                            : 'font-medium text-[#111118]'
+                        }`}
+                      >
+                        {todo.title}
+                      </span>
+                    </button>
+
+                    <div className="flex shrink-0 items-center gap-2">
+                      {todo.role && (
+                        <span
+                          className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${roleBadgeClasses(
+                            todo.role
+                          )}`}
+                        >
+                          {ROLES_BY_ID[todo.role]?.shortLabel ?? todo.role}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => deleteTodo(todo.id)}
+                        className="rounded-md p-1 text-[#A0A0B0] hover:text-rose-600"
+                        title="Delete task"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          {/* Continue Learning */}
+          <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-2xs">
             <div className="flex items-center justify-between">
-              <h2 className="text-[15px] font-semibold text-[#111118]">Continue learning</h2>
+              <h2 className="text-base font-semibold text-[#111118]">Continue learning</h2>
               <Link
                 href="/courses"
                 className="text-xs font-medium text-[#6E32F5] hover:underline"
@@ -239,37 +538,29 @@ export default function DashboardPage() {
               </Link>
             </div>
 
-            <div className="mt-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-              <div className="flex min-w-0 flex-1 items-center gap-4">
-                {/* Dark Preview Video Thumbnail with Purple Play Button */}
-                <Link
-                  href={`/courses/${activeCourseRole}`}
-                  className="relative flex h-[76px] w-[124px] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-[#1C1A29] to-[#2C2444]"
-                >
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#6E32F5] text-white shadow-md">
-                    <Play className="ml-0.5 h-4 w-4 fill-white" />
+            <div className="mt-4 flex flex-col gap-4 rounded-xl border border-[#F0F0F5] bg-[#FAFAFC] p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-4">
+                <div className="relative flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-[#1E1438] via-[#3A1E7A] to-[#6E32F5] text-white">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 backdrop-blur-xs">
+                    <Play className="h-3.5 w-3.5 fill-white text-white" />
                   </div>
-                </Link>
-
-                <div className="min-w-0 flex-1">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#6E32F5]">
-                    {ROLES_BY_ID[activeCourseRole].label} PREP
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[#6E32F5]">
+                    {ROLES_BY_ID[activeCourseRole]?.label} Prep
                   </div>
-                  <Link
-                    href={`/courses/${activeCourseRole}`}
-                    className="mt-0.5 block truncate text-sm font-semibold text-[#111118] hover:text-[#6E32F5]"
-                  >
+                  <div className="mt-0.5 truncate text-sm font-semibold text-[#111118]">
                     {activeStats.nextTitle}
-                  </Link>
-                  <div className="mt-2.5 flex items-center gap-3">
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#EFEFF5]">
+                  </div>
+                  <div className="mt-2 flex items-center gap-3">
+                    <div className="h-1.5 w-36 overflow-hidden rounded-full bg-[#ECECF2]">
                       <div
-                        className="h-full rounded-full bg-[#6E32F5] transition-all"
-                        style={{ width: `${Math.max(4, activeStats.pct)}%` }}
+                        className="h-full rounded-full bg-[#6E32F5]"
+                        style={{ width: `${Math.max(activeStats.pct, 8)}%` }}
                       />
                     </div>
-                    <span className="shrink-0 text-xs font-medium text-[#848494]">
-                      {activeStats.pct}% complete
+                    <span className="text-xs text-[#848494]" suppressHydrationWarning>
+                      {mounted ? `${activeStats.pct}% complete` : '0% complete'}
                     </span>
                   </div>
                 </div>
@@ -277,181 +568,130 @@ export default function DashboardPage() {
 
               <Link
                 href={`/courses/${activeCourseRole}`}
-                className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[#6E32F5] px-5 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:opacity-95"
+                className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[#6E32F5] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#5B24D6]"
               >
                 Continue
               </Link>
             </div>
           </section>
 
-          {/* 3. Recommended for You Card */}
-          <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-[0_1px_2px_rgba(16,16,24,0.03)]">
-            <h2 className="text-[15px] font-semibold text-[#111118]">Recommended for you</h2>
+          {/* Quick Launchpad (2x2 Grid) */}
+          <section className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setAddQuestionOpen(true)}
+              className="flex items-center justify-between rounded-2xl border border-[#ECECF2] bg-white p-4 text-left shadow-2xs transition hover:border-[#6E32F5]/40"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F3ECFF] text-[#6E32F5]">
+                  <Plus className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-[#111118]">Add Question & Video</div>
+                  <div className="text-xs text-[#848494]">Multi-role & round tagging</div>
+                </div>
+              </div>
+              <ArrowRight className="h-4 w-4 text-[#9E9EAE]" />
+            </button>
 
-            <div className="mt-3 divide-y divide-[#F0F0F5]">
-              <button
-                type="button"
-                onClick={() => setAddQuestionOpen(true)}
-                className="flex w-full items-center justify-between py-3 text-left transition hover:bg-[#FAFAFC]"
-              >
-                <span className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F3ECFF] text-[#6E32F5]">
-                    <Plus className="h-4 w-4" />
-                  </span>
-                  <span className="text-[13.5px] font-medium text-[#111118]">
-                    Add a custom question, written answer, or video recording
-                  </span>
-                </span>
-                <ChevronRight className="h-4 w-4 text-[#848494]" />
-              </button>
+            <Link
+              href="/import"
+              className="flex items-center justify-between rounded-2xl border border-[#ECECF2] bg-white p-4 shadow-2xs transition hover:border-[#6E32F5]/40"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F3ECFF] text-[#6E32F5]">
+                  <FileUp className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-[#111118]">Lark One-Click Import</div>
+                  <div className="text-xs text-[#848494]">Sync Wiki, Docs & Bitable</div>
+                </div>
+              </div>
+              <ArrowRight className="h-4 w-4 text-[#9E9EAE]" />
+            </Link>
 
-              <Link
-                href="/stories?tab=import"
-                className="flex items-center justify-between py-3 transition hover:bg-[#FAFAFC]"
-              >
-                <span className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
-                    <FileUp className="h-4 w-4" />
-                  </span>
-                  <span className="text-[13.5px] font-medium text-[#111118]">
-                    One-click import from Lark / 飞书 Wiki &amp; Bitable
-                  </span>
-                </span>
-                <ChevronRight className="h-4 w-4 text-[#848494]" />
-              </Link>
+            <Link
+              href="/knowledge"
+              className="flex items-center justify-between rounded-2xl border border-[#ECECF2] bg-white p-4 shadow-2xs transition hover:border-[#6E32F5]/40"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F3ECFF] text-[#6E32F5]">
+                  <BookMarked className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-[#111118]">Knowledge Hub</div>
+                  <div className="text-xs text-[#848494]">Vocab book & AI soundbites</div>
+                </div>
+              </div>
+              <ArrowRight className="h-4 w-4 text-[#9E9EAE]" />
+            </Link>
 
-              <Link
-                href="/courses"
-                className="flex items-center justify-between py-3 transition hover:bg-[#FAFAFC]"
-              >
-                <span className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-50 text-violet-600">
-                    <GraduationCap className="h-4 w-4" />
-                  </span>
-                  <span className="text-[13.5px] font-medium text-[#111118]">
-                    Edit &amp; publish your 7-track course syllabi (FDE, FDPM, AI PM, Ops, PgM, Consulting)
-                  </span>
-                </span>
-                <ChevronRight className="h-4 w-4 text-[#848494]" />
-              </Link>
-
-              <Link
-                href="/practice"
-                className="flex items-center justify-between py-3 transition hover:bg-[#FAFAFC]"
-              >
-                <span className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-rose-50 text-rose-600">
-                    <MessageSquare className="h-4 w-4" />
-                  </span>
-                  <span className="text-[13.5px] font-medium text-[#111118]">
-                    Launch AI mock interview with architecture board &amp; rubric scorecard
-                  </span>
-                </span>
-                <ChevronRight className="h-4 w-4 text-[#848494]" />
-              </Link>
-            </div>
-          </section>
-
-          {/* 4. Your 7 Active Tracks (Clean Cards) */}
-          <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-[0_1px_2px_rgba(16,16,24,0.03)]">
-            <div className="flex items-center justify-between">
-              <h2 className="text-[15px] font-semibold text-[#111118]">
-                Your 7 Role Courses ({allQuestions.length} Questions)
-              </h2>
-              <Link
-                href="/questions"
-                className="text-xs font-medium text-[#6E32F5] hover:underline"
-              >
-                Browse all questions →
-              </Link>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {ROLE_LIST.map((r) => {
-                const stats = computeCourseStats(state.courses[r.id]);
-                const compact = r.id === 'pgm' ? 'PgM' : r.shortLabel;
-                return (
-                  <Link
-                    key={r.id}
-                    href={`/courses/${r.id}`}
-                    className="rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-3 transition hover:border-[#D4C5FD] hover:bg-white"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className={`max-w-[92px] truncate whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ${roleBadgeClasses(
-                          r.id
-                        )}`}
-                      >
-                        {compact}
-                      </span>
-                      <span className="shrink-0 font-mono text-[11px] font-semibold text-[#111118]">
-                        {stats.pct}%
-                      </span>
-                    </div>
-                    <div className="mt-2 truncate text-xs font-medium text-[#111118]">
-                      {r.label}
-                    </div>
-                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#ECECF2]">
-                      <div
-                        className="h-full rounded-full bg-[#6E32F5]"
-                        style={{ width: `${Math.max(4, stats.pct)}%` }}
-                      />
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
+            <Link
+              href="/practice"
+              className="flex items-center justify-between rounded-2xl border border-[#ECECF2] bg-white p-4 shadow-2xs transition hover:border-[#6E32F5]/40"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F3ECFF] text-[#6E32F5]">
+                  <MessageSquare className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-[#111118]">AI Mock Room</div>
+                  <div className="text-xs text-[#848494]">Whiteboard & rubric scorecard</div>
+                </div>
+              </div>
+              <ArrowRight className="h-4 w-4 text-[#9E9EAE]" />
+            </Link>
           </section>
         </div>
 
-        {/* RIGHT RAIL (4 COLS) */}
+        {/* Right Rail (30%) */}
         <div className="space-y-5 lg:col-span-4">
-          {/* 1. Your Goals Card */}
-          <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-[0_1px_2px_rgba(16,16,24,0.03)]">
+          {/* Your Goals Card */}
+          <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-2xs">
             <div className="flex items-center justify-between">
-              <h2 className="text-[15px] font-semibold text-[#111118]">Your goals</h2>
-              {!editingGoals ? (
-                <button
-                  type="button"
-                  onClick={handleOpenGoalsEditor}
-                  className="text-xs font-semibold text-[#6E32F5] hover:underline"
-                >
-                  Edit
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setEditingGoals(false)}
-                  className="text-xs text-[#848494] hover:text-[#111118]"
-                >
-                  Cancel
-                </button>
-              )}
+              <h2 className="text-base font-semibold text-[#111118]">Your goals</h2>
+              <button
+                type="button"
+                onClick={handleOpenGoalsEditor}
+                className="text-xs font-medium text-[#6E32F5] hover:underline"
+              >
+                Edit
+              </button>
             </div>
 
             {editingGoals ? (
               <form onSubmit={handleSaveGoals} className="mt-3 space-y-2.5">
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={goalsSummary}
                   onChange={(e) => setGoalsSummary(e.target.value)}
-                  className="w-full rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-2.5 text-xs focus:border-[#6E32F5] focus:bg-white focus:outline-none"
+                  className="w-full rounded-xl border border-[#ECECF2] px-3 py-2 text-xs text-[#111118] focus:border-[#6E32F5] focus:outline-none"
                 />
                 <input
+                  type="text"
                   value={goalsCompanies}
                   onChange={(e) => setGoalsCompanies(e.target.value)}
-                  placeholder="Anthropic, OpenAI, Palantir, Stripe..."
-                  className="w-full rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-2.5 py-2 text-xs focus:border-[#6E32F5] focus:bg-white focus:outline-none"
+                  placeholder="Anthropic, OpenAI, Palantir, NVIDIA..."
+                  className="w-full rounded-xl border border-[#ECECF2] px-3 py-1.5 text-xs text-[#111118] focus:border-[#6E32F5] focus:outline-none"
                 />
-                <button
-                  type="submit"
-                  className="w-full rounded-xl bg-[#6E32F5] py-2 text-xs font-semibold text-white"
-                >
-                  Save Goals
-                </button>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingGoals(false)}
+                    className="rounded-lg border border-[#ECECF2] px-2.5 py-1 text-xs text-[#5E5E6E]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-[#6E32F5] px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    Save
+                  </button>
+                </div>
               </form>
             ) : (
-              <p className="mt-2.5 text-[13px] leading-relaxed text-[#525260]">
+              <p className="mt-3 text-sm leading-relaxed text-[#5E5E6E]">
                 {state.userGoals.summary}{' '}
                 <span className="font-semibold text-[#6E32F5]">
                   {state.userGoals.targetCompanies.join(', ')}
@@ -461,29 +701,80 @@ export default function DashboardPage() {
             )}
           </section>
 
-          {/* 2. Upcoming Loops Card (Aced-style Jobs picked for you) */}
-          <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-[0_1px_2px_rgba(16,16,24,0.03)]">
-            <div className="flex items-center justify-between">
-              <h2 className="text-[15px] font-semibold text-[#111118]">Upcoming loops</h2>
-              <button
-                type="button"
-                onClick={() => setShowAddLoop((v) => !v)}
-                className="text-xs font-semibold text-[#6E32F5] hover:underline"
-              >
-                + Add
-              </button>
+          {/* Schedule & Google Calendar Integration Card */}
+          <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-2xs">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-4 w-4 text-[#6E32F5]" />
+                <h2 className="text-base font-semibold text-[#111118]">Schedule & GCal</h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowGcalSetup((v) => !v)}
+                  className="rounded-lg border border-[#ECECF2] bg-[#FAFAFC] px-2 py-1 text-[11px] font-semibold text-[#6E32F5] hover:border-[#6E32F5]"
+                >
+                  {state.googleCalendarIcsUrl ? 'GCal Connected' : 'Connect GCal'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddLoop((v) => !v)}
+                  className="text-xs font-medium text-[#6E32F5] hover:underline"
+                >
+                  + Add
+                </button>
+              </div>
             </div>
+
+            {showGcalSetup && (
+              <form
+                onSubmit={handleSaveGcal}
+                className="mt-3 space-y-2 rounded-xl border border-[#6E32F5]/25 bg-[#F9F6FF] p-3"
+              >
+                <div className="text-[11px] font-semibold text-[#111118]">
+                  Google Calendar iCal (.ics) 同步
+                </div>
+                <p className="text-[11px] leading-relaxed text-[#5E5E6E]">
+                  在 Google Calendar 网页端 → 设置 → 你的日历 → 复制{' '}
+                  <span className="font-medium text-[#111118]">Secret address in iCal format</span>{' '}
+                  粘贴到下方，即可自动同步近期面试日程。
+                </p>
+                <input
+                  type="url"
+                  value={gcalInput}
+                  onChange={(e) => setGcalInput(e.target.value)}
+                  placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
+                  className="w-full rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowGcalSetup(false)}
+                    className="rounded-lg px-2 py-1 text-xs text-[#5E5E6E]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-[#6E32F5] px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    Save & Sync
+                  </button>
+                </div>
+              </form>
+            )}
 
             {showAddLoop && (
               <form
-                onSubmit={handleCreateLoop}
+                onSubmit={handleAddLoop}
                 className="mt-3 space-y-2 rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-3"
               >
                 <input
+                  type="text"
                   required
                   value={newCompany}
                   onChange={(e) => setNewCompany(e.target.value)}
-                  placeholder="Company (e.g., Anthropic, Palantir)"
+                  placeholder="Company (e.g. OpenAI)"
                   className="w-full rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
                 />
                 <div className="grid grid-cols-2 gap-2">
@@ -506,57 +797,107 @@ export default function DashboardPage() {
                   />
                 </div>
                 <input
+                  type="text"
                   value={newRound}
                   onChange={(e) => setNewRound(e.target.value)}
-                  placeholder="Round focus..."
+                  placeholder="Round focus"
                   className="w-full rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs"
                 />
-                <button
-                  type="submit"
-                  className="w-full rounded-lg bg-[#6E32F5] py-1.5 text-xs font-semibold text-white"
-                >
-                  Save Loop
-                </button>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddLoop(false)}
+                    className="rounded-lg px-2 py-1 text-xs text-[#5E5E6E]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-[#6E32F5] px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    Add
+                  </button>
+                </div>
               </form>
             )}
 
-            <div className="mt-4 space-y-3.5">
-              {state.upcomingLoops.map((loop) => {
-                const d = mounted ? daysUntil(loop.dateISO, todayISO) : null;
-                const roleCfg = ROLES_BY_ID[loop.role];
-                return (
-                  <div key={loop.id} className="group flex items-start justify-between gap-2">
-                    <Link
-                      href={`/courses/${loop.role}`}
-                      className="flex min-w-0 flex-1 items-start gap-3"
+            {/* Synced Google Calendar Events */}
+            {state.googleCalendarIcsUrl && (
+              <div className="mt-3 rounded-xl border border-emerald-200/80 bg-emerald-50/40 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-emerald-800">
+                    Google Calendar Events
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void fetchGcalEvents(state.googleCalendarIcsUrl ?? '')}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:underline"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${gcalLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </button>
+                </div>
+                {gcalError && <p className="mt-1 text-[11px] text-rose-600">{gcalError}</p>}
+                {!gcalError && gcalEvents.length === 0 && !gcalLoading && (
+                  <p className="mt-1 text-[11px] text-[#5E5E6E]">近期暂无日历日程。</p>
+                )}
+                <div className="mt-2 space-y-1.5">
+                  {gcalEvents.slice(0, 4).map((ev) => (
+                    <div
+                      key={ev.id}
+                      className="rounded-lg bg-white px-2.5 py-1.5 text-xs shadow-2xs"
                     >
-                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#ECECF2] bg-[#FAFAFC] text-[#6E32F5]">
-                        <Briefcase className="h-4 w-4" />
+                      <div className="truncate font-semibold text-[#111118]">{ev.summary}</div>
+                      <div className="text-[11px] text-[#5E5E6E]">
+                        {ev.dateLabel} · {ev.timeLabel}
                       </div>
-                      <div className="min-w-0">
-                        <div className="truncate text-[13px] font-semibold text-[#111118] group-hover:text-[#6E32F5]">
-                          {roleCfg.label}
-                        </div>
-                        <div className="truncate text-xs text-[#525260]">{loop.round}</div>
-                        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[#848494]">
-                          <span>{loop.company}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Upcoming Loops with 1-Click Add to Google Calendar */}
+            <div className="mt-4 space-y-3">
+              {state.upcomingLoops.map((loop) => {
+                const days = mounted ? daysUntil(loop.dateISO, todayISO) : null;
+                const gcalLink = buildGoogleCalendarUrl(
+                  `${loop.company} Interview — ${ROLES_BY_ID[loop.role]?.shortLabel ?? loop.role}`,
+                  loop.dateISO,
+                  `${loop.round}\n${loop.notes ?? ''}`
+                );
+                return (
+                  <div key={loop.id} className="group flex items-start justify-between gap-2.5">
+                    <div className="flex items-start gap-2.5">
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#F3ECFF] text-[#6E32F5]">
+                        <BookOpen className="h-3.5 w-3.5" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold text-[#111118]">{loop.company}</div>
+                        <div className="text-xs text-[#5E5E6E]">{loop.round}</div>
+                        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-[#848494]">
+                          <span>{ROLES_BY_ID[loop.role]?.shortLabel}</span>
                           <span>·</span>
-                          <span suppressHydrationWarning className="font-mono text-[#6E32F5]">
-                            {!mounted || d === null
-                              ? loop.dateISO
-                              : d > 0
-                                ? `T-${d}d`
-                                : d === 0
-                                  ? 'Today'
-                                  : `T+${Math.abs(d)}d`}
+                          <span className="font-mono text-[#6E32F5]" suppressHydrationWarning>
+                            {days !== null ? (days >= 0 ? `T-${days}d` : 'Done') : loop.dateISO}
                           </span>
+                          <a
+                            href={gcalLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-0.5 text-[#6E32F5] hover:underline"
+                            title="Add to Google Calendar"
+                          >
+                            GCal
+                            <ExternalLink className="h-2.5 w-2.5" />
+                          </a>
                         </div>
                       </div>
-                    </Link>
+                    </div>
                     <button
                       type="button"
                       onClick={() => removeUpcomingLoop(loop.id)}
-                      className="rounded p-1 text-[#848494] opacity-0 hover:text-rose-600 group-hover:opacity-100"
+                      className="rounded-md p-1 text-[#C2C2D0] opacity-0 transition hover:text-rose-600 group-hover:opacity-100"
                       title="Remove loop"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -565,20 +906,13 @@ export default function DashboardPage() {
                 );
               })}
             </div>
-
-            <Link
-              href="/customizer"
-              className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-[#6E32F5] hover:underline"
-            >
-              Tailor from a new JD →
-            </Link>
           </section>
 
-          {/* 3. Practice Streak Card */}
-          <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-[0_1px_2px_rgba(16,16,24,0.03)]">
+          {/* Practice Streak Card */}
+          <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-2xs">
             <div className="flex items-center justify-between">
-              <h2 className="text-[15px] font-semibold text-[#111118]">Practice streak</h2>
-              <span className="text-xs text-[#848494]">
+              <h2 className="text-base font-semibold text-[#111118]">Practice streak</h2>
+              <span className="text-xs font-medium text-[#848494]" suppressHydrationWarning>
                 Active: {mounted ? state.practiceDatesISO.length : 0}d
               </span>
             </div>
@@ -587,29 +921,29 @@ export default function DashboardPage() {
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F3ECFF] text-[#6E32F5]">
                 <Flame className="h-4 w-4" />
               </div>
-              <div>
-                <span suppressHydrationWarning className="text-xl font-bold text-[#111118]">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-bold text-[#111118]" suppressHydrationWarning>
                   {mounted ? state.practiceDatesISO.length : 0}
-                </span>{' '}
-                <span className="text-xs text-[#525260]">days practiced</span>
+                </span>
+                <span className="text-xs text-[#5E5E6E]">days practiced</span>
               </div>
             </div>
 
             <div className="mt-4 grid grid-cols-7 gap-1.5 text-center">
-              {weekDays.map((wd, i) => (
-                <div key={i} className="space-y-1">
-                  <div className="text-[10px] font-semibold text-[#848494]">{wd.lbl}</div>
+              {weekDays.map((d, idx) => (
+                <div key={idx} className="space-y-1.5">
+                  <div className="text-[11px] font-medium text-[#848494]">{d.lbl}</div>
                   <div
                     suppressHydrationWarning
-                    className={`mx-auto flex h-7 w-7 items-center justify-center rounded-lg font-mono text-[11px] font-medium ${
-                      wd.active
+                    className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
+                      d.active
                         ? 'bg-[#6E32F5] text-white'
-                        : wd.isToday
-                          ? 'border border-[#6E32F5] bg-[#F3ECFF] text-[#6E32F5]'
-                          : 'bg-[#F5F5FA] text-[#848494]'
+                        : d.isToday
+                          ? 'border-2 border-[#6E32F5] text-[#6E32F5]'
+                          : 'bg-[#FAFAFC] text-[#848494]'
                     }`}
                   >
-                    {wd.dayNum}
+                    {d.dayNum}
                   </div>
                 </div>
               ))}

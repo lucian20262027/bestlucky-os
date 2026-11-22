@@ -22,6 +22,7 @@ import {
   QuestionUserNotes,
   RoleTrack,
   StarStory,
+  TodoItem,
   UpcomingLoop,
   UserGoals,
   VocabItem,
@@ -73,6 +74,10 @@ interface AppContextValue {
   deleteVocabItem: (id: string) => void;
   upsertKnowledgeSnippet: (snippet: KnowledgeSnippet) => void;
   deleteKnowledgeSnippet: (id: string) => void;
+  addTodo: (todo: Omit<TodoItem, 'id' | 'createdAt' | 'completed'>) => void;
+  toggleTodo: (id: string) => void;
+  deleteTodo: (id: string) => void;
+  updateGoogleCalendarUrl: (url: string) => void;
   exportBackup: () => string;
   importBackup: (jsonText: string) => boolean;
   resetDemoData: () => void;
@@ -591,6 +596,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [commit]
   );
 
+  const addTodo = useCallback(
+    (todo: Omit<TodoItem, 'id' | 'createdAt' | 'completed'>) => {
+      const nextTodo: TodoItem = {
+        ...todo,
+        id: `todo-${Date.now()}`,
+        completed: false,
+        createdAt: new Date().toISOString(),
+      };
+      commit((prev) => ({
+        ...prev,
+        todos: [nextTodo, ...prev.todos],
+      }));
+    },
+    [commit]
+  );
+
+  const toggleTodo = useCallback(
+    (id: string) => {
+      commit((prev) => ({
+        ...prev,
+        todos: prev.todos.map((t) =>
+          t.id === id ? { ...t, completed: !t.completed } : t
+        ),
+      }));
+    },
+    [commit]
+  );
+
+  const deleteTodo = useCallback(
+    (id: string) => {
+      commit((prev) => ({
+        ...prev,
+        todos: prev.todos.filter((t) => t.id !== id),
+      }));
+    },
+    [commit]
+  );
+
+  const updateGoogleCalendarUrl = useCallback(
+    (url: string) => {
+      commit((prev) => ({
+        ...prev,
+        googleCalendarIcsUrl: url.trim(),
+      }));
+    },
+    [commit]
+  );
+
   const exportBackup = useCallback(() => exportStateAsJson(state), [state]);
 
   const importBackup = useCallback((jsonText: string) => {
@@ -643,6 +696,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deleteVocabItem,
         upsertKnowledgeSnippet,
         deleteKnowledgeSnippet,
+        addTodo,
+        toggleTodo,
+        deleteTodo,
+        updateGoogleCalendarUrl,
         exportBackup,
         importBackup,
         resetDemoData,

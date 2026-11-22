@@ -349,6 +349,15 @@ export interface KnowledgeSnippet {
   updatedAt: string;
 }
 
+export interface TodoItem {
+  id: string;
+  title: string;
+  completed: boolean;
+  role?: RoleTrack;
+  dueLabel?: string;
+  createdAt: string;
+}
+
 export interface AppState {
   profile: UserProfile;
   aiSettings: AISettings;
@@ -365,5 +374,7 @@ export interface AppState {
   stories: StarStory[];
   vocabItems: VocabItem[];
   knowledgeSnippets: KnowledgeSnippet[];
+  todos: TodoItem[];
+  googleCalendarIcsUrl?: string;
   lastCustomLoop: CustomLoopPlan | null;
 }

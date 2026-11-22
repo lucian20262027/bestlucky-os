@@ -2,7 +2,34 @@ import { SEED_COURSES } from './seed-courses';
 import { SEED_KNOWLEDGE_SNIPPETS, SEED_VOCAB_ITEMS } from './seed-knowledge';
 import { SEED_LIBRARY_ITEMS, SEED_QUESTION_NOTES } from './seed-library';
 import { DEFAULT_RESUME_SUMMARY, SEED_STORIES } from './seed-stories';
-import { AppState, RoleTrack } from './types';
+import { AppState, RoleTrack, TodoItem } from './types';
+
+const SEED_TODOS: TodoItem[] = [
+  {
+    id: 'todo-1',
+    title: 'Review 3 AI Architecture Soundbites in Knowledge Hub',
+    completed: false,
+    role: 'ai-pm',
+    dueLabel: 'Today',
+    createdAt: '2026-11-22T00:00:00.000Z',
+  },
+  {
+    id: 'todo-2',
+    title: 'Drill FDE 30-60-90 Legacy ERP System Decomposition',
+    completed: false,
+    role: 'fde',
+    dueLabel: 'Today',
+    createdAt: '2026-11-22T00:00:00.000Z',
+  },
+  {
+    id: 'todo-3',
+    title: 'Practice 6 hard-to-pronounce vocab terms with Speak button',
+    completed: false,
+    role: 'fdpm',
+    dueLabel: 'This Week',
+    createdAt: '2026-11-22T00:00:00.000Z',
+  },
+];
 
 export const STORAGE_KEY = 'loopos_v1_state';
 
@@ -32,7 +59,7 @@ function futureDateISO(daysFromNow: number, baseTodayISO?: string): string {
 export function createDefaultState(baseTodayISO?: string): AppState {
   return {
     profile: {
-      name: 'Yi',
+      name: 'Lucian',
       resumeSummary: DEFAULT_RESUME_SUMMARY,
       activeTracks: ALL_TRACKS,
     },
@@ -89,6 +116,8 @@ export function createDefaultState(baseTodayISO?: string): AppState {
     stories: SEED_STORIES,
     vocabItems: SEED_VOCAB_ITEMS,
     knowledgeSnippets: SEED_KNOWLEDGE_SNIPPETS,
+    todos: SEED_TODOS,
+    googleCalendarIcsUrl: '',
     lastCustomLoop: null,
   };
 }
@@ -107,6 +136,10 @@ export function loadAppState(): AppState {
       profile: {
         ...defaults.profile,
         ...(parsed.profile ?? {}),
+        name:
+          !parsed.profile?.name || parsed.profile.name === 'Yi'
+            ? defaults.profile.name
+            : parsed.profile.name,
         activeTracks:
           Array.isArray(parsed.profile?.activeTracks) && parsed.profile.activeTracks.length > 0
             ? parsed.profile.activeTracks
@@ -162,6 +195,11 @@ export function loadAppState(): AppState {
         Array.isArray(parsed.knowledgeSnippets) && parsed.knowledgeSnippets.length > 0
           ? parsed.knowledgeSnippets
           : defaults.knowledgeSnippets,
+      todos: Array.isArray(parsed.todos) ? parsed.todos : defaults.todos,
+      googleCalendarIcsUrl:
+        typeof parsed.googleCalendarIcsUrl === 'string'
+          ? parsed.googleCalendarIcsUrl
+          : '',
       lastCustomLoop: parsed.lastCustomLoop ?? null,
     };
   } catch {
@@ -191,7 +229,14 @@ export function parseImportedState(jsonText: string): AppState | null {
     return {
       ...defaults,
       ...parsed,
-      profile: { ...defaults.profile, ...parsed.profile },
+      profile: {
+        ...defaults.profile,
+        ...parsed.profile,
+        name:
+          !parsed.profile.name || parsed.profile.name === 'Yi'
+            ? defaults.profile.name
+            : parsed.profile.name,
+      },
       aiSettings: { ...defaults.aiSettings, ...(parsed.aiSettings ?? {}) },
       upcomingLoops: Array.isArray(parsed.upcomingLoops)
         ? parsed.upcomingLoops
@@ -214,6 +259,11 @@ export function parseImportedState(jsonText: string): AppState | null {
       knowledgeSnippets: Array.isArray(parsed.knowledgeSnippets)
         ? parsed.knowledgeSnippets
         : defaults.knowledgeSnippets,
+      todos: Array.isArray(parsed.todos) ? parsed.todos : defaults.todos,
+      googleCalendarIcsUrl:
+        typeof parsed.googleCalendarIcsUrl === 'string'
+          ? parsed.googleCalendarIcsUrl
+          : '',
       lastCustomLoop: parsed.lastCustomLoop ?? null,
     };
   } catch {
