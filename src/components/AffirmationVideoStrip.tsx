@@ -11,6 +11,8 @@ import {
   Sparkles,
   Upload,
   Video,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 import { getLocalMediaBlob, saveLocalMedia } from '@/lib/media-db';
@@ -22,20 +24,71 @@ interface AffirmationVideoStripProps {
   onSaveVideos: (videos: AffirmationVideo[]) => void;
 }
 
+interface YTPlayerInstance {
+  destroy: () => void;
+  unMute: () => void;
+  mute: () => void;
+  isMuted: () => boolean;
+  setVolume: (vol: number) => void;
+  playVideo: () => void;
+}
+
+declare global {
+  interface Window {
+    YT?: {
+      Player: new (
+        el: HTMLElement | string,
+        opts: {
+          videoId: string;
+          playerVars?: Record<string, string | number>;
+          events?: {
+            onReady?: (e: { target: YTPlayerInstance }) => void;
+            onStateChange?: (e: { data: number; target: YTPlayerInstance }) => void;
+          };
+        }
+      ) => YTPlayerInstance;
+      PlayerState?: { ENDED: number };
+    };
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+
+function extractYouTubeId(url: string): string | null {
+  const match = url.match(
+    /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{6,15})/
+  );
+  return match?.[1] ?? null;
+}
+
 export function AffirmationVideoStrip({
   videos,
   onSaveVideos,
 }: AffirmationVideoStripProps) {
   const slots = videos.slice(0, 3);
   const [activeIdx, setActiveIdx] = useState(0);
-  const [autoPlay, setAutoPlay] = useState(true);
+  const [autoAdvance, setAutoAdvance] = useState(true);
+  const [isMuted, setIsMuted] = useState(true);
   const [editing, setEditing] = useState(false);
   const [drafts, setDrafts] = useState<AffirmationVideo[]>(videos);
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const [localBlobUrls, setLocalBlobUrls] = useState<Record<string, string>>({});
-  const touchStartX = useRef<number | null>(null);
 
-  // Load IndexedDB object URLs for any local uploaded videos
+  const touchStartX = useRef<number | null>(null);
+  const ytContainerRef = useRef<HTMLDivElement | null>(null);
+  const ytPlayerRef = useRef<YTPlayerInstance | null>(null);
+  const htmlVideoRef = useRef<HTMLVideoElement | null>(null);
+  const autoAdvanceRef = useRef(autoAdvance);
+  const isMutedRef = useRef(isMuted);
+
+  useEffect(() => {
+    autoAdvanceRef.current = autoAdvance;
+  }, [autoAdvance]);
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
+
+  // Load IndexedDB object URLs for local uploaded videos
   useEffect(() => {
     let active = true;
     const created: string[] = [];
@@ -59,14 +112,13 @@ export function AffirmationVideoStrip({
     };
   }, [videos]);
 
-  // Smooth auto-rotation every 12 seconds when autoPlay is enabled & not editing
-  useEffect(() => {
-    if (!autoPlay || editing || slots.length <= 1) return;
-    const timer = window.setInterval(() => {
-      setActiveIdx((prev) => (prev + 1) % slots.length);
-    }, 12000);
-    return () => window.clearInterval(timer);
-  }, [autoPlay, editing, slots.length]);
+  const current = slots[activeIdx] ?? slots[0];
+  const localUrl = current ? localBlobUrls[current.id] : undefined;
+  const parsed = current?.videoUrl ? parseVideoSource(current.videoUrl) : null;
+  const ytId =
+    !localUrl && current?.videoUrl && parsed?.provider === 'youtube'
+      ? extractYouTubeId(current.videoUrl)
+      : null;
 
   const goPrev = () => {
     setActiveIdx((prev) => (prev - 1 + slots.length) % slots.length);
@@ -74,6 +126,107 @@ export function AffirmationVideoStrip({
 
   const goNext = () => {
     setActiveIdx((prev) => (prev + 1) % slots.length);
+  };
+
+  // Mount YouTube IFrame API player so we get exact ENDED events (play full video before advancing) + Unmute control
+  useEffect(() => {
+    if (!ytId || editing || !ytContainerRef.current) return;
+
+    let cancelled = false;
+
+    const mountPlayer = () => {
+      if (cancelled || !ytContainerRef.current || !window.YT?.Player) return;
+      if (ytPlayerRef.current) {
+        try {
+          ytPlayerRef.current.destroy();
+        } catch {
+          // Ignore cleanup errors
+        }
+        ytPlayerRef.current = null;
+      }
+      ytContainerRef.current.innerHTML = '';
+      const targetDiv = document.createElement('div');
+      targetDiv.style.width = '100%';
+      targetDiv.style.height = '100%';
+      ytContainerRef.current.appendChild(targetDiv);
+
+      ytPlayerRef.current = new window.YT.Player(targetDiv, {
+        videoId: ytId,
+        playerVars: {
+          autoplay: 1,
+          mute: isMutedRef.current ? 1 : 0,
+          rel: 0,
+          modestbranding: 1,
+          playsinline: 1,
+          controls: 1,
+        },
+        events: {
+          onReady: (e) => {
+            if (!isMutedRef.current) {
+              e.target.unMute();
+              e.target.setVolume(100);
+            } else {
+              e.target.mute();
+            }
+            e.target.playVideo();
+          },
+          onStateChange: (e) => {
+            // 0 = YT.PlayerState.ENDED — advance ONLY after full video finishes!
+            if (e.data === 0 && autoAdvanceRef.current && slots.length > 1) {
+              setActiveIdx((prev) => (prev + 1) % slots.length);
+            }
+          },
+        },
+      });
+    };
+
+    if (window.YT?.Player) {
+      mountPlayer();
+    } else {
+      const prevReady = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        if (prevReady) prevReady();
+        mountPlayer();
+      };
+      if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        document.head.appendChild(tag);
+      }
+    }
+
+    return () => {
+      cancelled = true;
+      if (ytPlayerRef.current) {
+        try {
+          ytPlayerRef.current.destroy();
+        } catch {
+          // Ignore cleanup errors
+        }
+        ytPlayerRef.current = null;
+      }
+    };
+  }, [ytId, editing, slots.length]);
+
+  const toggleSound = () => {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    if (ytPlayerRef.current) {
+      if (nextMuted) {
+        ytPlayerRef.current.mute();
+      } else {
+        ytPlayerRef.current.unMute();
+        ytPlayerRef.current.setVolume(100);
+        ytPlayerRef.current.playVideo();
+      }
+    }
+    if (htmlVideoRef.current) {
+      htmlVideoRef.current.muted = nextMuted;
+      if (!nextMuted) {
+        htmlVideoRef.current.volume = 1;
+        void htmlVideoRef.current.play().catch(() => {});
+      }
+    }
   };
 
   const openEditor = () => {
@@ -124,20 +277,7 @@ export function AffirmationVideoStrip({
     setEditing(false);
   };
 
-  const current = slots[activeIdx] ?? slots[0];
   if (!current) return null;
-
-  const parsed = current.videoUrl ? parseVideoSource(current.videoUrl) : null;
-  const localUrl = localBlobUrls[current.id];
-
-  // Build muted autoplay embed URL for YouTube Shorts/Video so it plays smoothly in hero stage
-  let embedSrc = parsed?.embedUrl;
-  if (parsed?.provider === 'youtube' && parsed.embedUrl) {
-    const ytId = parsed.embedUrl.split('/embed/')[1]?.split('?')[0];
-    if (ytId) {
-      embedSrc = `https://www.youtube.com/embed/${ytId}?autoplay=1&mute=1&loop=1&playlist=${ytId}&rel=0&modestbranding=1&playsinline=1`;
-    }
-  }
 
   return (
     <section
@@ -154,34 +294,42 @@ export function AffirmationVideoStrip({
       }}
     >
       {/* Hero Stage */}
-      <div className="relative h-[340px] w-full overflow-hidden bg-gradient-to-br from-[#131022] via-[#1B1434] to-[#0A0A0F] sm:h-[380px]">
+      <div className="relative h-[360px] w-full overflow-hidden bg-gradient-to-br from-[#131022] via-[#1B1434] to-[#0A0A0F] sm:h-[400px]">
         {/* Active Video Layer */}
         {localUrl ? (
           <video
+            ref={htmlVideoRef}
             key={localUrl}
             src={localUrl}
             autoPlay
-            muted
-            loop
+            muted={isMuted}
             playsInline
             controls
-            className="h-full w-full object-cover"
+            onEnded={() => {
+              if (autoAdvance && slots.length > 1) goNext();
+            }}
+            className="h-full w-full object-contain bg-black"
           />
         ) : current.videoUrl && parsed?.provider === 'direct' ? (
           <video
+            ref={htmlVideoRef}
             key={current.videoUrl}
             src={current.videoUrl}
             autoPlay
-            muted
-            loop
+            muted={isMuted}
             playsInline
             controls
-            className="h-full w-full object-cover"
+            onEnded={() => {
+              if (autoAdvance && slots.length > 1) goNext();
+            }}
+            className="h-full w-full object-contain bg-black"
           />
-        ) : embedSrc ? (
+        ) : ytId ? (
+          <div ref={ytContainerRef} className="h-full w-full bg-black" />
+        ) : parsed?.embedUrl ? (
           <iframe
-            key={embedSrc}
-            src={embedSrc}
+            key={parsed.embedUrl}
+            src={parsed.embedUrl}
             title={current.title}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
@@ -193,15 +341,40 @@ export function AffirmationVideoStrip({
           </div>
         )}
 
-        {/* Top Gradient + Top-Right Pill Switcher (Bomie.ai style) */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-20 bg-gradient-to-b from-black/70 to-transparent" />
+        {/* Top Gradient + Controls */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-20 bg-gradient-to-b from-black/75 to-transparent" />
         <div className="absolute top-3.5 right-3.5 left-3.5 z-10 flex flex-wrap items-center justify-between gap-2">
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/45 px-3 py-1 text-[11px] font-medium text-white/90 backdrop-blur-md">
-            <Sparkles className="h-3 w-3 text-[#C4B5FD]" />
-            Daily Mindset Stage
+          <div className="flex items-center gap-2">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/50 px-3 py-1 text-[11px] font-medium text-white/90 backdrop-blur-md">
+              <Sparkles className="h-3 w-3 text-[#C4B5FD]" />
+              Daily Mindset Stage
+            </div>
+
+            {/* Prominent Sound Unmute / Mute Pill */}
+            <button
+              type="button"
+              onClick={toggleSound}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold backdrop-blur-md transition ${
+                isMuted
+                  ? 'border-amber-300/60 bg-amber-400/20 text-amber-200 hover:bg-amber-400/35'
+                  : 'border-emerald-300/50 bg-emerald-500/25 text-emerald-200 hover:bg-emerald-500/35'
+              }`}
+            >
+              {isMuted ? (
+                <>
+                  <VolumeX className="h-3.5 w-3.5" />
+                  Tap to Unmute
+                </>
+              ) : (
+                <>
+                  <Volume2 className="h-3.5 w-3.5" />
+                  Sound On
+                </>
+              )}
+            </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 rounded-full border border-white/15 bg-black/50 p-1 backdrop-blur-md">
+          <div className="flex flex-wrap items-center gap-1.5 rounded-full border border-white/15 bg-black/55 p-1 backdrop-blur-md">
             {slots.map((slot, idx) => {
               const active = idx === activeIdx;
               return (
@@ -227,7 +400,7 @@ export function AffirmationVideoStrip({
           type="button"
           onClick={goPrev}
           aria-label="Previous video"
-          className="absolute top-1/2 left-3 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white/90 backdrop-blur-md transition hover:bg-black/70"
+          className="absolute top-1/2 left-3 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white/90 backdrop-blur-md transition hover:bg-black/75"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
@@ -235,17 +408,17 @@ export function AffirmationVideoStrip({
           type="button"
           onClick={goNext}
           aria-label="Next video"
-          className="absolute top-1/2 right-3 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white/90 backdrop-blur-md transition hover:bg-black/70"
+          className="absolute top-1/2 right-3 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white/90 backdrop-blur-md transition hover:bg-black/75"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
 
         {/* Bottom-Left Cinematic Overlay + Bottom-Right Progress Pills */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-5 bottom-4 z-10 flex items-end justify-between gap-4">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-black/85 via-black/40 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-5 bottom-10 z-10 flex items-end justify-between gap-4 sm:bottom-5">
           <div className="min-w-0">
             <div className="font-mono text-[10px] font-semibold uppercase tracking-widest text-amber-300">
-              0{activeIdx + 1} · DAILY AFFIRMATION &amp; ENERGY
+              0{activeIdx + 1} · PLAYS FULL CLIP THEN AUTO-NEXT
             </div>
             <h2 className="mt-0.5 truncate text-xl font-bold tracking-tight text-white sm:text-2xl">
               {current.title}
@@ -255,8 +428,7 @@ export function AffirmationVideoStrip({
             )}
           </div>
 
-          {/* Bomie-style pill indicators */}
-          <div className="pointer-events-auto flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-black/50 px-2.5 py-1.5 backdrop-blur-md">
+          <div className="pointer-events-auto flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-black/55 px-2.5 py-1.5 backdrop-blur-md">
             {slots.map((slot, idx) => (
               <button
                 key={slot.id}
@@ -274,25 +446,43 @@ export function AffirmationVideoStrip({
 
       {/* Bomie-style Dark Footer Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-[#0F0F16] px-5 py-2.5 text-xs text-white/75">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
           <span className="font-semibold text-white">BestLucky Mindset</span>
           <span className="text-white/30">·</span>
           <span>{parsed?.label ?? 'Local / Cloud Video'}</span>
           <span className="text-white/30">·</span>
           <button
             type="button"
-            onClick={() => setAutoPlay((v) => !v)}
+            onClick={() => setAutoAdvance((v) => !v)}
             className="inline-flex items-center gap-1 text-emerald-400 hover:underline"
           >
-            {autoPlay ? (
+            {autoAdvance ? (
               <>
                 <Pause className="h-3 w-3" />
-                Auto-Rotate On
+                Auto-Next On Finish
               </>
             ) : (
               <>
                 <Play className="h-3 w-3" />
-                Auto-Rotate Paused
+                Auto-Next Paused
+              </>
+            )}
+          </button>
+          <span className="text-white/30">·</span>
+          <button
+            type="button"
+            onClick={toggleSound}
+            className="inline-flex items-center gap-1 text-white/85 hover:text-white"
+          >
+            {isMuted ? (
+              <>
+                <VolumeX className="h-3 w-3 text-amber-300" />
+                Muted (Click to Unmute)
+              </>
+            ) : (
+              <>
+                <Volume2 className="h-3 w-3 text-emerald-400" />
+                Sound On
               </>
             )}
           </button>
