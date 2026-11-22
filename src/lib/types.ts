@@ -362,6 +362,15 @@ export interface TodoItem {
   createdAt: string;
 }
 
+export interface AffirmationVideo {
+  id: string;
+  title: string;
+  subtitle?: string;
+  videoUrl: string;
+  localMediaId?: string;
+  localMediaName?: string;
+}
+
 export interface AppState {
   profile: UserProfile;
   aiSettings: AISettings;
@@ -379,6 +388,7 @@ export interface AppState {
   vocabItems: VocabItem[];
   knowledgeSnippets: KnowledgeSnippet[];
   todos: TodoItem[];
+  affirmationVideos: AffirmationVideo[];
   googleCalendarIcsUrl?: string;
   lastCustomLoop: CustomLoopPlan | null;
 }

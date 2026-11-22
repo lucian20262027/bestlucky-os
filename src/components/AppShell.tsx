@@ -30,6 +30,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useApp } from './AppProvider';
+import { FloatingCopilotWidget } from './FloatingCopilotWidget';
 import { SearchModal } from './SearchModal';
 import { SettingsModal } from './SettingsModal';
 import { ROLE_LIST } from '@/lib/roles';
@@ -512,6 +513,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <SettingsModal />
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <FloatingCopilotWidget />
     </div>
   );
 }

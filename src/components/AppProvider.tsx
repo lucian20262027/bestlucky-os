@@ -9,6 +9,7 @@ import {
   saveAppState,
 } from '@/lib/storage';
 import {
+  AffirmationVideo,
   AISettings,
   AppState,
   CourseSyllabus,
@@ -78,6 +79,7 @@ interface AppContextValue {
   updateTodo: (id: string, patch: Partial<TodoItem>) => void;
   toggleTodo: (id: string) => void;
   deleteTodo: (id: string) => void;
+  updateAffirmationVideos: (videos: AffirmationVideo[]) => void;
   updateGoogleCalendarUrl: (url: string) => void;
   exportBackup: () => string;
   importBackup: (jsonText: string) => boolean;
@@ -645,6 +647,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [commit]
   );
 
+  const updateAffirmationVideos = useCallback(
+    (videos: AffirmationVideo[]) => {
+      commit((prev) => ({
+        ...prev,
+        affirmationVideos: videos,
+      }));
+    },
+    [commit]
+  );
+
   const updateGoogleCalendarUrl = useCallback(
     (url: string) => {
       commit((prev) => ({
@@ -711,6 +723,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateTodo,
         toggleTodo,
         deleteTodo,
+        updateAffirmationVideos,
         updateGoogleCalendarUrl,
         exportBackup,
         importBackup,
