@@ -403,6 +403,29 @@ export interface JobApplication {
   updatedAt: string;
 }
 
+export interface SavedJDItem {
+  id: string;
+  company: string;
+  roleTitle: string;
+  roleTrack: RoleTrack;
+  jdText: string;
+  screenshotName?: string;
+  screenshotDataUrl?: string;
+  extractedSkills: string[];
+  coreCapabilities: string[];
+  summary: string;
+  updatedAt: string;
+}
+
+export interface ResumeProfile {
+  id: string;
+  label: string;
+  track: string; // e.g. 'FDPM' | 'AI PM' | 'Ops' | 'Safety' | 'FDE'
+  fileName?: string;
+  content: string;
+  updatedAt: string;
+}
+
 export interface AppState {
   profile: UserProfile;
   aiSettings: AISettings;
@@ -422,6 +445,8 @@ export interface AppState {
   todos: TodoItem[];
   affirmationVideos: AffirmationVideo[];
   applications: JobApplication[];
+  savedJDs: SavedJDItem[];
+  resumeProfiles: ResumeProfile[];
   googleCalendarIcsUrl?: string;
   lastCustomLoop: CustomLoopPlan | null;
 }

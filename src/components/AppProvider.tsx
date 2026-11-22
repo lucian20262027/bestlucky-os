@@ -22,7 +22,9 @@ import {
   PracticeSession,
   QuestionProgress,
   QuestionUserNotes,
+  ResumeProfile,
   RoleTrack,
+  SavedJDItem,
   StarStory,
   TodoItem,
   UpcomingLoop,
@@ -83,6 +85,10 @@ interface AppContextValue {
   updateAffirmationVideos: (videos: AffirmationVideo[]) => void;
   upsertApplication: (app: JobApplication) => void;
   deleteApplication: (id: string) => void;
+  upsertSavedJD: (jd: SavedJDItem) => void;
+  deleteSavedJD: (id: string) => void;
+  upsertResumeProfile: (resume: ResumeProfile) => void;
+  deleteResumeProfile: (id: string) => void;
   updateGoogleCalendarUrl: (url: string) => void;
   exportBackup: () => string;
   importBackup: (jsonText: string) => boolean;
@@ -696,6 +702,56 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [commit]
   );
 
+  const upsertSavedJD = useCallback(
+    (jd: SavedJDItem) => {
+      commit((prev) => {
+        const exists = prev.savedJDs.some((j) => j.id === jd.id);
+        return {
+          ...prev,
+          savedJDs: exists
+            ? prev.savedJDs.map((j) => (j.id === jd.id ? jd : j))
+            : [jd, ...prev.savedJDs],
+        };
+      });
+    },
+    [commit]
+  );
+
+  const deleteSavedJD = useCallback(
+    (id: string) => {
+      commit((prev) => ({
+        ...prev,
+        savedJDs: prev.savedJDs.filter((j) => j.id !== id),
+      }));
+    },
+    [commit]
+  );
+
+  const upsertResumeProfile = useCallback(
+    (resume: ResumeProfile) => {
+      commit((prev) => {
+        const exists = prev.resumeProfiles.some((r) => r.id === resume.id);
+        return {
+          ...prev,
+          resumeProfiles: exists
+            ? prev.resumeProfiles.map((r) => (r.id === resume.id ? resume : r))
+            : [resume, ...prev.resumeProfiles],
+        };
+      });
+    },
+    [commit]
+  );
+
+  const deleteResumeProfile = useCallback(
+    (id: string) => {
+      commit((prev) => ({
+        ...prev,
+        resumeProfiles: prev.resumeProfiles.filter((r) => r.id !== id),
+      }));
+    },
+    [commit]
+  );
+
   const updateGoogleCalendarUrl = useCallback(
     (url: string) => {
       commit((prev) => ({
@@ -765,6 +821,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateAffirmationVideos,
         upsertApplication,
         deleteApplication,
+        upsertSavedJD,
+        deleteSavedJD,
+        upsertResumeProfile,
+        deleteResumeProfile,
         updateGoogleCalendarUrl,
         exportBackup,
         importBackup,

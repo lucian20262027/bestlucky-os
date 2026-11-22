@@ -8,12 +8,15 @@ import {
   Check,
   CheckCircle2,
   Cpu,
+  FileText,
+  Layers,
   Loader2,
   Play,
   Sparkles,
   Wand2,
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
+import { JdResumeStudio } from '@/components/JdResumeStudio';
 import { requestCustomLoop } from '@/lib/ai-client';
 import { roleBadgeClasses } from '@/lib/helpers';
 import { ROLE_LIST, ROLES_BY_ID, ROUND_LABELS } from '@/lib/roles';
@@ -30,6 +33,7 @@ export default function CustomizerPage() {
     addUpcomingLoop,
   } = useApp();
 
+  const [activeTab, setActiveTab] = useState<'jd-library' | 'resumes' | 'generator'>('jd-library');
   const [company, setCompany] = useState('Anthropic / OpenAI Applied AI');
   const [role, setRole] = useState<RoleTrack>('fde');
   const [round, setRound] = useState<RoundType>('decomposition');
@@ -105,21 +109,77 @@ export default function CustomizerPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-white px-3 py-1 text-[11px] font-medium text-[var(--ink-secondary)]">
-          <Wand2 className="h-3.5 w-3.5 text-[var(--accent)]" />
-          Resume + JD Driven Loop Generator
+      {/* Header + Segmented Tabs */}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-white px-3 py-1 text-[11px] font-medium text-[var(--ink-secondary)]">
+            <Wand2 className="h-3.5 w-3.5 text-[var(--accent)]" />
+            JD &amp; Resume Intelligence Studio
+          </div>
+          <h1 className="mt-2.5 text-2xl font-semibold tracking-tight text-[var(--ink-primary)]">
+            JD Study Plan &amp; Resume Match Studio
+          </h1>
+          <p className="mt-1 text-sm text-[var(--ink-secondary)]">
+            上传多公司 JD 截图或文本一键提取共同技能、管理 FDPM / AI PM / Ops / Safety 简历库，并做简历精准匹配分析。
+          </p>
         </div>
-        <h1 className="mt-2.5 text-2xl font-semibold tracking-tight text-[var(--ink-primary)]">
-          Tailored Interview Loop Generator
-        </h1>
-        <p className="mt-1 text-sm text-[var(--ink-secondary)]">
-          粘贴你的简历摘要与目标岗位 JD，一键生成能力差距诊断、3 阶段冲刺计划，以及 5 道围绕你真实经历的定制模拟题。
-        </p>
+
+        <div className="inline-flex flex-wrap rounded-xl border border-[var(--border)] bg-white p-1 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setActiveTab('jd-library')}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition ${
+              activeTab === 'jd-library'
+                ? 'bg-[#6E32F5] text-white shadow-2xs'
+                : 'text-[#5E5E6E] hover:text-[#111118]'
+            }`}
+          >
+            <Layers className="h-3.5 w-3.5" />
+            1. JD 截图库 &amp; 共同技能 ({state.savedJDs.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('resumes')}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition ${
+              activeTab === 'resumes'
+                ? 'bg-[#6E32F5] text-white shadow-2xs'
+                : 'text-[#5E5E6E] hover:text-[#111118]'
+            }`}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            2. 多方向简历库 ({state.resumeProfiles.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('generator')}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition ${
+              activeTab === 'generator'
+                ? 'bg-[#6E32F5] text-white shadow-2xs'
+                : 'text-[#5E5E6E] hover:text-[#111118]'
+            }`}
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+            3. 定制 Loop 生成器
+          </button>
+        </div>
       </div>
 
-      {/* Form Grid */}
+      {activeTab !== 'generator' && (
+        <JdResumeStudio
+          activeSection={activeTab}
+          onUseInGenerator={(opts) => {
+            if (opts.company) setCompany(opts.company);
+            if (opts.role) setRole(opts.role);
+            if (opts.jdText) setJdText(opts.jdText);
+            if (opts.resumeText) updateResumeSummary(opts.resumeText);
+            setActiveTab('generator');
+          }}
+        />
+      )}
+
+      {/* Form Grid (Tab 3: Generator) */}
+      {activeTab === 'generator' && (
+      <>
       <form
         onSubmit={handleGenerate}
         className="grid grid-cols-1 gap-5 rounded-2xl border border-[var(--border)] bg-white p-5 shadow-2xs lg:grid-cols-12"
@@ -436,6 +496,8 @@ export default function CustomizerPage() {
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

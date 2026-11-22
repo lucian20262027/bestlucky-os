@@ -54,7 +54,10 @@ export async function POST(req: NextRequest) {
       | 'generate_loop'
       | 'analyze_vocab'
       | 'dashboard_ask'
-      | 'review_speech';
+      | 'review_speech'
+      | 'analyze_jd'
+      | 'analyze_common_jds'
+      | 'match_resume_jd';
     model?: string;
     language?: LanguageMode;
     payload?: Record<string, unknown>;
@@ -79,6 +82,174 @@ export async function POST(req: NextRequest) {
   const apiKey = headerKey || envKey || '';
 
   const runFallback = async (warning?: string) => {
+    if (action === 'analyze_jd') {
+      const jdText = String(payload.jdText ?? '').trim();
+      const company = String(payload.company ?? 'Target Company').trim() || 'Target Company';
+      const roleTitle = String(payload.roleTitle ?? 'Applied AI / PM').trim() || 'Applied AI / PM';
+      const hasImage = Boolean(payload.imageDataUrl);
+      const lower = jdText.toLowerCase();
+
+      const skillCandidates = [
+        ['python', 'Python'],
+        ['typescript', 'TypeScript'],
+        ['sql', 'SQL & Analytics'],
+        ['rag', 'RAG Retrieval'],
+        ['eval', 'Eval Harnesses'],
+        ['agent', 'Agentic Workflows'],
+        ['guardrail', 'Deterministic Guardrails'],
+        ['api', 'API & Integration'],
+        ['erp', 'Legacy ERP / CRM'],
+        ['llm', 'LLM Orchestration'],
+        ['safety', 'AI Safety & Governance'],
+        ['roi', 'ROI & Commercialization'],
+        ['latency', 'Latency & SLA Optimization'],
+        ['stakeholder', 'Executive Stakeholder Alignment'],
+      ];
+      const matchedSkills = skillCandidates
+        .filter(([k]) => lower.includes(k))
+        .map(([, label]) => label);
+      const extractedSkills =
+        matchedSkills.length > 0
+          ? matchedSkills.slice(0, 6)
+          : ['AI Workflow Architecture', 'Eval & Guardrails', 'Cross-Functional Execution', 'Metrics & ROI'];
+
+      const coreCapabilities = [
+        'Ambiguity Decomposition & Problem Framing',
+        'End-to-End Production Delivery (30-60-90)',
+        'Deterministic Verification & Risk Mitigation',
+      ];
+
+      const summary = hasImage && !jdText
+        ? `已保存 ${company} 的 JD 截图！在左下角 Settings 配置 Gemini API Key 后可自动 OCR 识别截图文字；你也可以直接补充关键 JD 要点进行精准匹配。`
+        : `${company} (${roleTitle}) 核心考察 ${extractedSkills.slice(0, 3).join('、')}，并强调从模糊需求快速落地可量化业务结果。`;
+
+      return NextResponse.json({
+        mode: 'local_fallback',
+        warning,
+        data: {
+          company,
+          roleTitle,
+          extractedSkills,
+          coreCapabilities,
+          summary,
+          jdTextExtracted: jdText,
+        },
+      });
+    }
+    if (action === 'analyze_common_jds') {
+      const jds = Array.isArray(payload.jds)
+        ? (payload.jds as Array<{
+            company?: string;
+            roleTitle?: string;
+            extractedSkills?: string[];
+            coreCapabilities?: string[];
+          }>)
+        : [];
+      const skillCounts = new Map<string, number>();
+      const capCounts = new Map<string, number>();
+      jds.forEach((j) => {
+        (j.extractedSkills ?? []).forEach((s) =>
+          skillCounts.set(s, (skillCounts.get(s) ?? 0) + 1)
+        );
+        (j.coreCapabilities ?? []).forEach((c) =>
+          capCounts.set(c, (capCounts.get(c) ?? 0) + 1)
+        );
+      });
+      const commonSkills = Array.from(skillCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([skill, frequency]) => ({ skill, frequency }));
+      const coreCapabilities = Array.from(capCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([c]) => c);
+
+      return NextResponse.json({
+        mode: 'local_fallback',
+        warning,
+        data: {
+          commonSkills,
+          coreCapabilities,
+          prepPriorities: [
+            `优先打磨覆盖最多岗位的 ${commonSkills.slice(0, 3).map((s) => s.skill).join(' / ') || 'AI 系统架构与 Eval 护栏'} 实战案例`,
+            '准备 2 个包含量化 ROI（准确率、P95 延迟、回本周期）的 STAR+L 核心故事',
+            '用 Knowledge Hub 闪卡抽查高频架构金句，确保每个赛道 30 秒开场白脱口而出',
+          ],
+          summary: `已横向对比 ${jds.length} 个目标岗位：最高频共同技能集中在 ${commonSkills
+            .slice(0, 4)
+            .map((s) => `${s.skill} (${s.frequency}/${jds.length})`)
+            .join('、')}。`,
+        },
+      });
+    }
+    if (action === 'match_resume_jd') {
+      const jdTitle = String(payload.jdTitle ?? 'Target Role');
+      const jdText = String(payload.jdText ?? '');
+      const resumeLabel = String(payload.resumeLabel ?? 'Selected Resume');
+      const resumeContent = String(payload.resumeContent ?? '');
+      const jdWords = new Set(
+        jdText
+          .toLowerCase()
+          .split(/[^a-z0-9+#.-]+/)
+          .filter((w) => w.length >= 4)
+      );
+      const resLower = resumeContent.toLowerCase();
+      const matched: string[] = [];
+      const missing: string[] = [];
+      const highSignalKeywords = [
+        'agentic',
+        'rag',
+        'eval',
+        'deterministic',
+        'guardrail',
+        'python',
+        'typescript',
+        'latency',
+        'roi',
+        'erp',
+        'safety',
+        'governance',
+        'attribution',
+        'routing',
+        'design partner',
+        'hitl',
+      ];
+      highSignalKeywords.forEach((kw) => {
+        if (jdText.toLowerCase().includes(kw) || jdWords.has(kw)) {
+          if (resLower.includes(kw)) matched.push(kw);
+          else missing.push(kw);
+        }
+      });
+      const total = matched.length + missing.length;
+      const matchScore = total > 0 ? Math.min(96, Math.max(58, Math.round((matched.length / total) * 40 + 55))) : 78;
+
+      return NextResponse.json({
+        mode: 'local_fallback',
+        warning,
+        data: {
+          matchScore,
+          matchedStrengths:
+            matched.length > 0
+              ? matched.map((k) => `简历已覆盖关键能力词：${k}`)
+              : ['简历具备端到端 AI 工作流交付与跨团队推进基础'],
+          missingGaps:
+            missing.length > 0
+              ? missing.slice(0, 4).map((k) => `JD 强调 "${k}"，当前简历中未显式突出`)
+              : ['建议进一步补充与该岗位直接对齐的量化 SLA / ROI 指标'],
+          optimizationTips: [
+            `针对「${jdTitle}」，建议在「${resumeLabel}」顶部 Summary 第一句直接写入该岗位核心关键词。`,
+            missing.length > 0
+              ? `把缺失高频词（${missing.slice(0, 3).join(', ')}）自然融入最近一段项目经历的 Action + Result 中。`
+              : '突出 30-60-90 天落地节奏与确定性校验护栏。',
+            '每条 Bullet 尽量以「强动词 + 量化指标（% / $ / ms）」收尾。',
+          ],
+          rewrittenBullets: [
+            `Architected production ${matched[0] || 'AI'} workflows with deterministic schema validation and automated failure attribution, cutting critical errors by 40% while keeping P95 latency within SLA.`,
+            `Partnered directly with enterprise design partners to ship a Week-2 vertical slice, translating ambiguous operational bottlenecks into measurable ARR & ROI.`,
+          ],
+        },
+      });
+    }
     if (action === 'review_speech') {
       const transcript = String(payload.transcript ?? '').trim();
       const durationSec = Math.max(10, Number(payload.durationSec ?? 45));
@@ -198,6 +369,142 @@ export async function POST(req: NextRequest) {
 
   try {
     const ai = new GoogleGenAI({ apiKey });
+
+    if (action === 'analyze_jd') {
+      const jdText = String(payload.jdText ?? '').trim();
+      const company = String(payload.company ?? '').trim();
+      const roleTitle = String(payload.roleTitle ?? '').trim();
+      const imageDataUrl = String(payload.imageDataUrl ?? '').trim();
+
+      const promptText = `Analyze this Job Description (from text and/or attached screenshot) for Lucian.
+Company hint: "${company || 'Infer from JD'}"
+Role hint: "${roleTitle || 'Infer from JD'}"
+JD Text:
+"""
+${jdText || '(See attached JD screenshot)'}
+"""
+${getLangInstruction(language)}
+Return strict JSON:
+- company: string
+- roleTitle: string
+- extractedSkills: 4-8 concise technical/product skill tags
+- coreCapabilities: 3-5 core interview competencies evaluated
+- summary: 1-2 sentence crisp takeaway in Chinese
+- jdTextExtracted: brief clean text summary of key requirements from the image/text`;
+
+      let inputPayload: unknown = promptText;
+      if (imageDataUrl.startsWith('data:image/')) {
+        const commaIdx = imageDataUrl.indexOf(',');
+        const header = imageDataUrl.slice(5, commaIdx);
+        const mime = header.split(';')[0] || 'image/png';
+        const base64 = imageDataUrl.slice(commaIdx + 1);
+        inputPayload = [
+          { type: 'text', text: promptText },
+          { type: 'image', data: base64, mime_type: mime },
+        ];
+      }
+
+      const interaction = await ai.interactions.create({
+        model: chosenModel,
+        input: inputPayload as string,
+        response_mime_type: 'application/json',
+        response_format: {
+          type: 'object',
+          properties: {
+            company: { type: 'string' },
+            roleTitle: { type: 'string' },
+            extractedSkills: { type: 'array', items: { type: 'string' } },
+            coreCapabilities: { type: 'array', items: { type: 'string' } },
+            summary: { type: 'string' },
+            jdTextExtracted: { type: 'string' },
+          },
+          required: ['company', 'roleTitle', 'extractedSkills', 'coreCapabilities', 'summary'],
+        },
+        store: false,
+      });
+      const raw = stripCodeFences(interaction.output_text ?? '');
+      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: JSON.parse(raw) });
+    }
+
+    if (action === 'analyze_common_jds') {
+      const jds = Array.isArray(payload.jds) ? payload.jds : [];
+      const interaction = await ai.interactions.create({
+        model: chosenModel,
+        input: `Analyze these ${jds.length} target Job Descriptions together and synthesize the COMMON skills and core capabilities required across them:
+${JSON.stringify(jds)}
+${getLangInstruction(language)}
+Return strict JSON:
+- commonSkills: array of 5-8 { skill: string, frequency: number }
+- coreCapabilities: array of 4-6 overarching capabilities
+- prepPriorities: array of 3-4 actionable prep priorities
+- summary: 2-sentence Chinese synthesis`,
+        response_mime_type: 'application/json',
+        response_format: {
+          type: 'object',
+          properties: {
+            commonSkills: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  skill: { type: 'string' },
+                  frequency: { type: 'number' },
+                },
+                required: ['skill', 'frequency'],
+              },
+            },
+            coreCapabilities: { type: 'array', items: { type: 'string' } },
+            prepPriorities: { type: 'array', items: { type: 'string' } },
+            summary: { type: 'string' },
+          },
+          required: ['commonSkills', 'coreCapabilities', 'prepPriorities', 'summary'],
+        },
+        store: false,
+      });
+      const raw = stripCodeFences(interaction.output_text ?? '');
+      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: JSON.parse(raw) });
+    }
+
+    if (action === 'match_resume_jd') {
+      const jdTitle = String(payload.jdTitle ?? '');
+      const jdText = String(payload.jdText ?? '');
+      const resumeLabel = String(payload.resumeLabel ?? '');
+      const resumeContent = String(payload.resumeContent ?? '');
+      const interaction = await ai.interactions.create({
+        model: chosenModel,
+        input: `Compare this Resume against the target JD and give concrete optimization recommendations.
+Target JD (${jdTitle}):
+"""
+${jdText}
+"""
+Resume (${resumeLabel}):
+"""
+${resumeContent}
+"""
+${getLangInstruction(language)}
+Return strict JSON:
+- matchScore: integer 0-100
+- matchedStrengths: 2-4 crisp bullet points
+- missingGaps: 2-4 specific missing keywords/experiences
+- optimizationTips: 3 actionable resume edits in Chinese
+- rewrittenBullets: 2 ready-to-paste senior-level English resume bullets tailored to this JD`,
+        response_mime_type: 'application/json',
+        response_format: {
+          type: 'object',
+          properties: {
+            matchScore: { type: 'number' },
+            matchedStrengths: { type: 'array', items: { type: 'string' } },
+            missingGaps: { type: 'array', items: { type: 'string' } },
+            optimizationTips: { type: 'array', items: { type: 'string' } },
+            rewrittenBullets: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['matchScore', 'matchedStrengths', 'missingGaps', 'optimizationTips', 'rewrittenBullets'],
+        },
+        store: false,
+      });
+      const raw = stripCodeFences(interaction.output_text ?? '');
+      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: JSON.parse(raw) });
+    }
 
     if (action === 'review_speech') {
       const questionTitle = String(payload.questionTitle ?? 'Interview Question');

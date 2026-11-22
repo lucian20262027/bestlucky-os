@@ -2,7 +2,71 @@ import { SEED_COURSES } from './seed-courses';
 import { SEED_KNOWLEDGE_SNIPPETS, SEED_VOCAB_ITEMS } from './seed-knowledge';
 import { SEED_LIBRARY_ITEMS, SEED_QUESTION_NOTES } from './seed-library';
 import { DEFAULT_RESUME_SUMMARY, SEED_STORIES } from './seed-stories';
-import { AffirmationVideo, AppState, JobApplication, RoleTrack, TodoItem } from './types';
+import {
+  AffirmationVideo,
+  AppState,
+  JobApplication,
+  ResumeProfile,
+  RoleTrack,
+  SavedJDItem,
+  TodoItem,
+} from './types';
+
+const SEED_SAVED_JDS: SavedJDItem[] = [
+  {
+    id: 'jd-openai-fde',
+    company: 'OpenAI',
+    roleTitle: 'Forward Deployed Engineer (Applied AI)',
+    roleTrack: 'fde',
+    jdText:
+      'Embed directly with Fortune 500 engineering & ops teams to ship end-to-end agentic pipelines, RAG retrieval over legacy ERPs, evaluation harnesses, and confidence-gated human-in-the-loop workflows within 30-60 days.',
+    extractedSkills: ['Agentic Pipelines', 'RAG & Evals', 'Python / TypeScript', 'HITL Guardrails', 'Legacy ERP Integration'],
+    coreCapabilities: ['Ambiguity Decomposition', 'Week-2 Vertical Slice Delivery', 'Executive Stakeholder Alignment'],
+    summary: '要求 30-60 天内把模糊企业需求切片落地为带 Eval 护栏的生产级 Agent 系统。',
+    updatedAt: '2026-11-22T00:00:00.000Z',
+  },
+  {
+    id: 'jd-anthropic-fdpm',
+    company: 'Anthropic',
+    roleTitle: 'Forward Deployed PM / Applied AI',
+    roleTrack: 'fdpm',
+    jdText:
+      'Partner with enterprise design partners to scope high-ROI AI workflows, build deterministic safety/schema validators around probabilistic Claude outputs, and distill field learnings into core platform primitives.',
+    extractedSkills: ['Design Partner Discovery', 'Deterministic Guardrails', 'Prompt & Model Routing', 'ROI Modeling'],
+    coreCapabilities: ['80/20 Platform Abstraction', 'AI Safety & Compliance', 'Cross-Functional Execution'],
+    summary: '聚焦 Design Partner 商业闭环、安全护栏与从客户定制沉淀为标准平台能力。',
+    updatedAt: '2026-11-22T00:00:00.000Z',
+  },
+];
+
+const SEED_RESUME_PROFILES: ResumeProfile[] = [
+  {
+    id: 'res-fde',
+    label: 'FDE / Applied AI 简历',
+    track: 'FDE',
+    fileName: 'Lucian_Resume_FDE_v4.pdf',
+    content: DEFAULT_RESUME_SUMMARY,
+    updatedAt: '2026-11-22T00:00:00.000Z',
+  },
+  {
+    id: 'res-aipm',
+    label: 'AI PM / FDPM 简历',
+    track: 'AI PM / FDPM',
+    fileName: 'Lucian_Resume_AIPM_v3.pdf',
+    content:
+      'AI Product Manager & Forward Deployed PM experienced in 0->1 enterprise AI workflows, model-agnostic routing gateways, deterministic schema validation, evaluation harnesses, and pilot-to-ARR ROI commercialization.',
+    updatedAt: '2026-11-22T00:00:00.000Z',
+  },
+  {
+    id: 'res-ops-safety',
+    label: 'Ops / AI Safety 简历',
+    track: 'Ops / Safety',
+    fileName: 'Lucian_Resume_Ops_Safety_v2.pdf',
+    content:
+      'Operations & Trust/Safety Strategist experienced in governance policy engines, automated failure attribution across model/tool/permission layers, WBR/QBR operating cadences, and high-stakes risk mitigation.',
+    updatedAt: '2026-11-22T00:00:00.000Z',
+  },
+];
 
 const SEED_APPLICATIONS: JobApplication[] = [
   {
@@ -181,6 +245,8 @@ export function createDefaultState(baseTodayISO?: string): AppState {
     todos: SEED_TODOS,
     affirmationVideos: SEED_AFFIRMATION_VIDEOS,
     applications: SEED_APPLICATIONS,
+    savedJDs: SEED_SAVED_JDS,
+    resumeProfiles: SEED_RESUME_PROFILES,
     googleCalendarIcsUrl: '',
     lastCustomLoop: null,
   };
@@ -268,6 +334,14 @@ export function loadAppState(): AppState {
         Array.isArray(parsed.applications) && parsed.applications.length > 0
           ? parsed.applications
           : defaults.applications,
+      savedJDs:
+        Array.isArray(parsed.savedJDs) && parsed.savedJDs.length > 0
+          ? parsed.savedJDs
+          : defaults.savedJDs,
+      resumeProfiles:
+        Array.isArray(parsed.resumeProfiles) && parsed.resumeProfiles.length > 0
+          ? parsed.resumeProfiles
+          : defaults.resumeProfiles,
       googleCalendarIcsUrl:
         typeof parsed.googleCalendarIcsUrl === 'string'
           ? parsed.googleCalendarIcsUrl
@@ -340,6 +414,14 @@ export function parseImportedState(jsonText: string): AppState | null {
         Array.isArray(parsed.applications) && parsed.applications.length > 0
           ? parsed.applications
           : defaults.applications,
+      savedJDs:
+        Array.isArray(parsed.savedJDs) && parsed.savedJDs.length > 0
+          ? parsed.savedJDs
+          : defaults.savedJDs,
+      resumeProfiles:
+        Array.isArray(parsed.resumeProfiles) && parsed.resumeProfiles.length > 0
+          ? parsed.resumeProfiles
+          : defaults.resumeProfiles,
       googleCalendarIcsUrl:
         typeof parsed.googleCalendarIcsUrl === 'string'
           ? parsed.googleCalendarIcsUrl
