@@ -4,6 +4,7 @@ export interface CalendarEventItem {
   id: string;
   summary: string;
   startISO: string;
+  dateISO: string;
   dateLabel: string;
   timeLabel: string;
   location?: string;
@@ -74,6 +75,7 @@ export async function POST(req: NextRequest) {
             id: current.uid || `gcal-${dt.getTime()}-${events.length}`,
             summary: unescapeIcsText(current.summary),
             startISO: dt.toISOString(),
+            dateISO: dt.toISOString().slice(0, 10),
             dateLabel: dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' }),
             timeLabel: current.dtstart?.includes('T')
               ? dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
@@ -91,7 +93,7 @@ export async function POST(req: NextRequest) {
     }
 
     events.sort((a, b) => a.startISO.localeCompare(b.startISO));
-    return NextResponse.json({ events: events.slice(0, 8) });
+    return NextResponse.json({ events: events.slice(0, 24) });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Calendar sync failed';
     return NextResponse.json({ error: message }, { status: 500 });

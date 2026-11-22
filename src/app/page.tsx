@@ -5,38 +5,28 @@ import Link from 'next/link';
 import {
   ArrowRight,
   BookMarked,
-  BookOpen,
-  Calendar,
   Check,
   CheckSquare,
-  ExternalLink,
   FileUp,
   Loader2,
   MessageSquare,
   Play,
   Plus,
-  RefreshCw,
   Sparkles,
   Square,
-  Target,
   Trash2,
   X,
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import { QuestionModal } from '@/components/QuestionModal';
 import { RareFolderCard } from '@/components/RareFolderCard';
-import { daysUntil, getAllQuestions, roleBadgeClasses } from '@/lib/helpers';
+import {
+  type CalendarEventItem,
+  ScheduleCalendarPanel,
+} from '@/components/ScheduleCalendarPanel';
+import { getAllQuestions, roleBadgeClasses } from '@/lib/helpers';
 import { ROLE_LIST, ROLES_BY_ID } from '@/lib/roles';
 import { CourseSyllabus, RoleTrack } from '@/lib/types';
-
-interface CalendarEventItem {
-  id: string;
-  summary: string;
-  startISO: string;
-  dateLabel: string;
-  timeLabel: string;
-  location?: string;
-}
 
 interface CopilotReply {
   query: string;
@@ -81,7 +71,6 @@ export default function DashboardPage() {
     state,
     mounted,
     todayISO,
-    updateUserGoals,
     addUpcomingLoop,
     removeUpcomingLoop,
     addCustomQuestion,
@@ -100,32 +89,12 @@ export default function DashboardPage() {
   // Todo state
   const [newTodoTitle, setNewTodoTitle] = useState('');
   const [newTodoRole, setNewTodoRole] = useState<RoleTrack>('fde');
-
-  // Goals & Loops state
-  const [editingGoals, setEditingGoals] = useState(false);
-  const [goalsSummary, setGoalsSummary] = useState('');
-  const [goalsCompanies, setGoalsCompanies] = useState('');
-  const [showAddLoop, setShowAddLoop] = useState(false);
   const [addQuestionOpen, setAddQuestionOpen] = useState(false);
 
-  const [newCompany, setNewCompany] = useState('');
-  const [newRole, setNewRole] = useState<RoleTrack>('fde');
-  const [newRound, setNewRound] = useState('System & Problem Decomposition');
-  const [newDate, setNewDate] = useState('2026-11-28');
-
   // Google Calendar ICS sync state
-  const [showGcalSetup, setShowGcalSetup] = useState(false);
-  const [gcalInput, setGcalInput] = useState('');
   const [gcalEvents, setGcalEvents] = useState<CalendarEventItem[]>([]);
   const [gcalLoading, setGcalLoading] = useState(false);
   const [gcalError, setGcalError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (todayISO) {
-      const targetMs = Date.parse(`${todayISO}T00:00:00Z`) + 7 * 86400000;
-      setNewDate(new Date(targetMs).toISOString().slice(0, 10));
-    }
-  }, [todayISO]);
 
   const fetchGcalEvents = useCallback(async (icsUrl: string) => {
     if (!icsUrl.trim()) return;
@@ -155,7 +124,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (mounted && state.googleCalendarIcsUrl) {
-      setGcalInput(state.googleCalendarIcsUrl);
       void fetchGcalEvents(state.googleCalendarIcsUrl);
     }
   }, [mounted, state.googleCalendarIcsUrl, fetchGcalEvents]);
@@ -234,49 +202,13 @@ export default function DashboardPage() {
     setNewTodoTitle('');
   };
 
-  const handleOpenGoalsEditor = () => {
-    setGoalsSummary(state.userGoals.summary);
-    setGoalsCompanies(state.userGoals.targetCompanies.join(', '));
-    setEditingGoals(true);
-  };
-
-  const handleSaveGoals = (e: React.FormEvent) => {
-    e.preventDefault();
-    const companies = goalsCompanies
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    updateUserGoals({
-      summary: goalsSummary.trim() || state.userGoals.summary,
-      targetCompanies: companies.length > 0 ? companies : state.userGoals.targetCompanies,
-    });
-    setEditingGoals(false);
-  };
-
-  const handleAddLoop = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCompany.trim()) return;
-    addUpcomingLoop({
-      company: newCompany.trim(),
-      role: newRole,
-      round: newRound.trim() || 'System & Problem Decomposition',
-      dateISO: newDate,
-      notes: '',
-    });
-    setNewCompany('');
-    setShowAddLoop(false);
-  };
-
-  const handleSaveGcal = (e: React.FormEvent) => {
-    e.preventDefault();
-    const url = gcalInput.trim();
+  const handleSaveGcalUrl = (url: string) => {
     updateGoogleCalendarUrl(url);
     if (url) {
       void fetchGcalEvents(url);
     } else {
       setGcalEvents([]);
     }
-    setShowGcalSetup(false);
   };
 
   return (
@@ -406,282 +338,20 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Row 3: Middle Bento — Your Goals (left) + Schedule & GCal (right) */}
-      <div className="grid gap-5 lg:grid-cols-12">
-        {/* Your Goals */}
-        <section className="flex flex-col justify-between rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-2xs lg:col-span-5">
-          <div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Target className="h-4 w-4 text-[#6E32F5]" />
-                <h2 className="text-base font-semibold text-[#111118]">Your goals</h2>
-              </div>
-              <button
-                type="button"
-                onClick={handleOpenGoalsEditor}
-                className="text-xs font-medium text-[#6E32F5] hover:underline"
-              >
-                Edit
-              </button>
-            </div>
-
-            {editingGoals ? (
-              <form onSubmit={handleSaveGoals} className="mt-3 space-y-2.5">
-                <textarea
-                  rows={2}
-                  value={goalsSummary}
-                  onChange={(e) => setGoalsSummary(e.target.value)}
-                  className="w-full rounded-xl border border-[#ECECF2] px-3 py-2 text-xs text-[#111118] focus:border-[#6E32F5] focus:outline-none"
-                />
-                <input
-                  type="text"
-                  value={goalsCompanies}
-                  onChange={(e) => setGoalsCompanies(e.target.value)}
-                  placeholder="Anthropic, OpenAI, Palantir, NVIDIA..."
-                  className="w-full rounded-xl border border-[#ECECF2] px-3 py-1.5 text-xs text-[#111118] focus:border-[#6E32F5] focus:outline-none"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditingGoals(false)}
-                    className="rounded-lg border border-[#ECECF2] px-2.5 py-1 text-xs text-[#5E5E6E]"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="rounded-lg bg-[#6E32F5] px-3 py-1 text-xs font-semibold text-white"
-                  >
-                    Save
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <p className="mt-3 text-sm leading-relaxed text-[#5E5E6E]">
-                {state.userGoals.summary}{' '}
-                <span className="font-semibold text-[#6E32F5]">
-                  {state.userGoals.targetCompanies.join(', ')}
-                </span>
-                .
-              </p>
-            )}
-          </div>
-
-          {/* Target Company Pills */}
-          <div className="mt-4 flex flex-wrap gap-1.5 border-t border-[#F2F2F7] pt-3">
-            {state.userGoals.targetCompanies.map((c) => (
-              <span
-                key={c}
-                className="rounded-lg border border-[#ECECF2] bg-[#FAFAFC] px-2.5 py-1 text-[11px] font-medium text-[#111118]"
-              >
-                {c}
-              </span>
-            ))}
-          </div>
-        </section>
-
-        {/* Schedule & Google Calendar */}
-        <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-2xs lg:col-span-7">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-[#6E32F5]" />
-              <h2 className="text-base font-semibold text-[#111118]">Schedule &amp; GCal</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowGcalSetup((v) => !v)}
-                className="rounded-lg border border-[#ECECF2] bg-[#FAFAFC] px-2.5 py-1 text-[11px] font-semibold text-[#6E32F5] transition hover:border-[#6E32F5]"
-              >
-                {state.googleCalendarIcsUrl ? 'GCal Connected' : 'Connect GCal'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowAddLoop((v) => !v)}
-                className="inline-flex items-center gap-1 rounded-lg border border-[#ECECF2] px-2.5 py-1 text-[11px] font-semibold text-[#111118] transition hover:border-[#6E32F5] hover:text-[#6E32F5]"
-              >
-                <Plus className="h-3 w-3" />
-                Add Loop
-              </button>
-            </div>
-          </div>
-
-          {showGcalSetup && (
-            <form
-              onSubmit={handleSaveGcal}
-              className="mt-3 space-y-2 rounded-xl border border-[#6E32F5]/25 bg-[#F9F6FF] p-3"
-            >
-              <div className="text-[11px] font-semibold text-[#111118]">
-                Google Calendar iCal (.ics) 同步
-              </div>
-              <p className="text-[11px] leading-relaxed text-[#5E5E6E]">
-                在 Google Calendar 网页端 → 设置 → 你的日历 → 复制{' '}
-                <span className="font-medium text-[#111118]">Secret address in iCal format</span>{' '}
-                粘贴到下方，即可自动同步近期面试日程。
-              </p>
-              <input
-                type="url"
-                value={gcalInput}
-                onChange={(e) => setGcalInput(e.target.value)}
-                placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
-                className="w-full rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowGcalSetup(false)}
-                  className="rounded-lg px-2 py-1 text-xs text-[#5E5E6E]"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-lg bg-[#6E32F5] px-3 py-1 text-xs font-semibold text-white"
-                >
-                  Save &amp; Sync
-                </button>
-              </div>
-            </form>
-          )}
-
-          {showAddLoop && (
-            <form
-              onSubmit={handleAddLoop}
-              className="mt-3 space-y-2 rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-3"
-            >
-              <div className="grid gap-2 sm:grid-cols-3">
-                <input
-                  type="text"
-                  required
-                  value={newCompany}
-                  onChange={(e) => setNewCompany(e.target.value)}
-                  placeholder="Company (e.g. OpenAI)"
-                  className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
-                />
-                <select
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value as RoleTrack)}
-                  className="rounded-lg border border-[#ECECF2] bg-white px-2 py-1.5 text-xs"
-                >
-                  {ROLE_LIST.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.shortLabel}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="date"
-                  value={newDate}
-                  onChange={(e) => setNewDate(e.target.value)}
-                  className="rounded-lg border border-[#ECECF2] bg-white px-2 py-1.5 text-xs"
-                />
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newRound}
-                  onChange={(e) => setNewRound(e.target.value)}
-                  placeholder="Round focus"
-                  className="flex-1 rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs"
-                />
-                <button
-                  type="submit"
-                  className="rounded-lg bg-[#6E32F5] px-3 py-1.5 text-xs font-semibold text-white"
-                >
-                  Add
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* Synced Google Calendar Events */}
-          {state.googleCalendarIcsUrl && (
-            <div className="mt-3 rounded-xl border border-emerald-200/80 bg-emerald-50/40 p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-emerald-800">
-                  Google Calendar Events
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void fetchGcalEvents(state.googleCalendarIcsUrl ?? '')}
-                  className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:underline"
-                >
-                  <RefreshCw className={`h-3 w-3 ${gcalLoading ? 'animate-spin' : ''}`} />
-                  Refresh
-                </button>
-              </div>
-              {gcalError && <p className="mt-1 text-[11px] text-rose-600">{gcalError}</p>}
-              {!gcalError && gcalEvents.length === 0 && !gcalLoading && (
-                <p className="mt-1 text-[11px] text-[#5E5E6E]">近期暂无日历日程。</p>
-              )}
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {gcalEvents.slice(0, 4).map((ev) => (
-                  <div
-                    key={ev.id}
-                    className="rounded-lg bg-white px-2.5 py-1.5 text-xs shadow-2xs"
-                  >
-                    <div className="truncate font-semibold text-[#111118]">{ev.summary}</div>
-                    <div className="text-[11px] text-[#5E5E6E]">
-                      {ev.dateLabel} · {ev.timeLabel}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Upcoming Loops Grid */}
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            {state.upcomingLoops.map((loop) => {
-              const days = mounted ? daysUntil(loop.dateISO, todayISO) : null;
-              const gcalLink = buildGoogleCalendarUrl(
-                `${loop.company} Interview — ${ROLES_BY_ID[loop.role]?.shortLabel ?? loop.role}`,
-                loop.dateISO,
-                `${loop.round}\n${loop.notes ?? ''}`
-              );
-              return (
-                <div
-                  key={loop.id}
-                  className="group relative flex flex-col justify-between rounded-xl border border-[#EFEFF5] bg-[#FAFAFC] p-3 transition hover:border-[#6E32F5]/30 hover:bg-white"
-                >
-                  <button
-                    type="button"
-                    onClick={() => removeUpcomingLoop(loop.id)}
-                    className="absolute top-2 right-2 rounded-md p-1 text-[#C2C2D0] opacity-0 transition hover:text-rose-600 group-hover:opacity-100"
-                    title="Remove loop"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                  <div>
-                    <div className="flex items-center gap-1.5 pr-4">
-                      <BookOpen className="h-3.5 w-3.5 shrink-0 text-[#6E32F5]" />
-                      <span className="truncate text-xs font-semibold text-[#111118]">
-                        {loop.company}
-                      </span>
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-[11px] text-[#5E5E6E]">{loop.round}</p>
-                  </div>
-                  <div className="mt-2.5 flex items-center justify-between text-[11px]">
-                    <span className="font-mono font-semibold text-[#6E32F5]" suppressHydrationWarning>
-                      {days !== null ? (days >= 0 ? `T-${days}d` : 'Done') : loop.dateISO}
-                    </span>
-                    <a
-                      href={gcalLink}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-0.5 font-medium text-[#6E32F5] hover:underline"
-                      title="Add to Google Calendar"
-                    >
-                      GCal
-                      <ExternalLink className="h-2.5 w-2.5" />
-                    </a>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      </div>
+      {/* Row 3: Full-Width Native Google Calendar & Schedule */}
+      <ScheduleCalendarPanel
+        mounted={mounted}
+        todayISO={todayISO}
+        upcomingLoops={state.upcomingLoops}
+        googleCalendarIcsUrl={state.googleCalendarIcsUrl}
+        gcalEvents={gcalEvents}
+        gcalLoading={gcalLoading}
+        gcalError={gcalError}
+        onRefreshGcal={() => void fetchGcalEvents(state.googleCalendarIcsUrl ?? '')}
+        onSaveGcalUrl={handleSaveGcalUrl}
+        onAddLoop={addUpcomingLoop}
+        onRemoveLoop={removeUpcomingLoop}
+      />
 
       {/* Row 4: Today's Prep Todo List + Continue Learning */}
       <div className="grid gap-5 lg:grid-cols-12">
