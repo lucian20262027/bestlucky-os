@@ -13,11 +13,13 @@ import {
   Loader2,
   Play,
   Sparkles,
+  Upload,
   Wand2,
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import { JdResumeStudio } from '@/components/JdResumeStudio';
 import { requestCustomLoop } from '@/lib/ai-client';
+import { extractDocumentText } from '@/lib/doc-parser-client';
 import { roleBadgeClasses } from '@/lib/helpers';
 import { ROLE_LIST, ROLES_BY_ID, ROUND_LABELS } from '@/lib/roles';
 import { SAMPLE_JDS } from '@/lib/seed-stories';
@@ -42,8 +44,50 @@ export default function CustomizerPage() {
   const [savedIds, setSavedIds] = useState<Record<string, boolean>>({});
   const [loopAdded, setLoopAdded] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [parsingResumeFile, setParsingResumeFile] = useState(false);
+  const [parsingJdFile, setParsingJdFile] = useState(false);
+  const [resumeFileName, setResumeFileName] = useState('');
+  const [jdFileName, setJdFileName] = useState('');
 
   const plan = state.lastCustomLoop;
+
+  const handleResumeDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setParsingResumeFile(true);
+    setNotice(null);
+    try {
+      const res = await extractDocumentText(file);
+      setResumeFileName(file.name);
+      if (res.text) {
+        updateResumeSummary(res.text);
+      } else if (res.error) {
+        setNotice(res.error);
+      }
+    } finally {
+      setParsingResumeFile(false);
+    }
+  };
+
+  const handleJdDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setParsingJdFile(true);
+    setNotice(null);
+    try {
+      const res = await extractDocumentText(file);
+      setJdFileName(file.name);
+      if (res.text) {
+        setJdText(res.text);
+      } else if (res.error) {
+        setNotice(res.error);
+      }
+    } finally {
+      setParsingJdFile(false);
+    }
+  };
 
   const handleLoadSample = (sampleId: string) => {
     const sample = SAMPLE_JDS.find((s) => s.id === sampleId);
@@ -186,9 +230,52 @@ export default function CustomizerPage() {
       >
         <div className="space-y-4 lg:col-span-5">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-secondary)]">
-              Your Resume / Core Highlights (Auto-saved)
-            </label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-secondary)]">
+                Your Resume / Core Highlights (Auto-saved)
+              </label>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {state.resumeProfiles.length > 0 && (
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      const found = state.resumeProfiles.find((r) => r.id === e.target.value);
+                      if (found) {
+                        updateResumeSummary(found.content);
+                        setResumeFileName(found.fileName || found.label);
+                      }
+                    }}
+                    className="rounded-md border border-[var(--border)] bg-white px-2 py-1 text-[11px] text-[var(--ink-secondary)] focus:border-[var(--accent)] focus:outline-none"
+                  >
+                    <option value="">从简历库调用...</option>
+                    {state.resumeProfiles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        [{r.track}] {r.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[#D4C5FD] bg-[#F9F6FF] px-2.5 py-1 text-[11px] font-semibold text-[#6E32F5] transition hover:bg-[#F3ECFF]">
+                  {parsingResumeFile ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Upload className="h-3 w-3" />
+                  )}
+                  {parsingResumeFile ? '解析中...' : '上传 PDF / DOC'}
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt,.md"
+                    onChange={handleResumeDocUpload}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+            {resumeFileName && (
+              <p className="mt-1 text-[11px] text-[var(--ink-muted)]">
+                已导入简历: {resumeFileName}
+              </p>
+            )}
             <textarea
               rows={9}
               value={state.profile.resumeSummary}
@@ -253,7 +340,21 @@ export default function CustomizerPage() {
                 Target Job Description (JD)
               </label>
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-[var(--ink-muted)]">Load Sample JD:</span>
+                <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[#D4C5FD] bg-[#F9F6FF] px-2.5 py-1 text-[11px] font-semibold text-[#6E32F5] transition hover:bg-[#F3ECFF]">
+                  {parsingJdFile ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Upload className="h-3 w-3" />
+                  )}
+                  {parsingJdFile ? '解析中...' : '上传 PDF / DOC'}
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt,.md"
+                    onChange={handleJdDocUpload}
+                    className="hidden"
+                  />
+                </label>
+                <span className="text-[11px] text-[var(--ink-muted)]">Sample:</span>
                 {SAMPLE_JDS.map((s) => (
                   <button
                     key={s.id}
@@ -266,6 +367,11 @@ export default function CustomizerPage() {
                 ))}
               </div>
             </div>
+            {jdFileName && (
+              <p className="mt-1 text-[11px] text-[var(--ink-muted)]">
+                已导入 JD: {jdFileName}
+              </p>
+            )}
 
             <textarea
               required

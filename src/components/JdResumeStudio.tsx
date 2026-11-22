@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
+import { extractDocumentText } from '@/lib/doc-parser-client';
 import { roleBadgeClasses } from '@/lib/helpers';
 import { ROLE_LIST, ROLES_BY_ID } from '@/lib/roles';
 import { ResumeProfile, RoleTrack, SavedJDItem } from '@/lib/types';
@@ -66,6 +67,8 @@ export function JdResumeStudio({
   const [jdTextInput, setJdTextInput] = useState('');
   const [jdScreenshotName, setJdScreenshotName] = useState('');
   const [jdScreenshotUrl, setJdScreenshotUrl] = useState('');
+  const [parsingJdFile, setParsingJdFile] = useState(false);
+  const [jdParseNotice, setJdParseNotice] = useState('');
   const [analyzingJd, setAnalyzingJd] = useState(false);
 
   const [analyzingCommon, setAnalyzingCommon] = useState(false);
@@ -82,6 +85,8 @@ export function JdResumeStudio({
   // Block 2: Resume Library
   const [resumeModalOpen, setResumeModalOpen] = useState(false);
   const [editingResume, setEditingResume] = useState<ResumeProfile | null>(null);
+  const [parsingResumeFile, setParsingResumeFile] = useState(false);
+  const [resumeParseNotice, setResumeParseNotice] = useState('');
 
   const callAiEndpoint = async (action: string, payload: Record<string, unknown>) => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -101,18 +106,37 @@ export function JdResumeStudio({
     return res.json();
   };
 
-  const handleJdImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleJdFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
     setJdScreenshotName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setJdScreenshotUrl(reader.result);
+    setJdParseNotice('');
+
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          setJdScreenshotUrl(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    setParsingJdFile(true);
+    try {
+      const result = await extractDocumentText(file);
+      if (result.text) {
+        setJdTextInput((prev) =>
+          prev.trim() ? `${prev.trim()}\n\n${result.text}` : result.text
+        );
+      } else if (result.error) {
+        setJdParseNotice(result.error);
       }
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
+    } finally {
+      setParsingJdFile(false);
+    }
   };
 
   const handleAnalyzeAndSaveJd = async (e: React.FormEvent) => {
@@ -240,40 +264,30 @@ export function JdResumeStudio({
     setResumeModalOpen(true);
   };
 
-  const handleResumeFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleResumeFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file || !editingResume) return;
-    const isTextLike =
-      file.name.endsWith('.txt') ||
-      file.name.endsWith('.md') ||
-      file.type.startsWith('text/');
-    if (isTextLike) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setEditingResume((prev) =>
-          prev
-            ? {
-                ...prev,
-                fileName: file.name,
-                label: prev.label || file.name.replace(/\.[^.]+$/, ''),
-                content: typeof reader.result === 'string' ? reader.result : prev.content,
-              }
-            : prev
-        );
-      };
-      reader.readAsText(file);
-    } else {
+    setResumeParseNotice('');
+    setParsingResumeFile(true);
+    try {
+      const result = await extractDocumentText(file);
       setEditingResume((prev) =>
         prev
           ? {
               ...prev,
               fileName: file.name,
               label: prev.label || file.name.replace(/\.[^.]+$/, ''),
+              content: result.text || prev.content,
             }
           : prev
       );
+      if (result.error && !result.text) {
+        setResumeParseNotice(result.error);
+      }
+    } finally {
+      setParsingResumeFile(false);
     }
-    e.target.value = '';
   };
 
   const handleSaveResume = (e: React.FormEvent) => {
@@ -645,15 +659,29 @@ export function JdResumeStudio({
               </div>
 
               <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-[#D4C5FD] bg-[#F9F6FF] p-4 text-xs font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]">
-                <ImagePlus className="h-4 w-4" />
-                {jdScreenshotName ? `已选择截图: ${jdScreenshotName}` : '上传公司 JD 截图照片 (PNG / JPG / WebP)'}
+                {parsingJdFile ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    正在解析 JD 文档正文...
+                  </>
+                ) : (
+                  <>
+                    <ImagePlus className="h-4 w-4" />
+                    {jdScreenshotName
+                      ? `已选择文件: ${jdScreenshotName}`
+                      : '上传公司 JD 截图或文档 (PNG / JPG / PDF / DOC / DOCX)'}
+                  </>
+                )}
                 <input
                   type="file"
-                  accept="image/*"
-                  onChange={handleJdImageUpload}
+                  accept="image/*,.pdf,.doc,.docx,.txt,.md"
+                  onChange={handleJdFileUpload}
                   className="hidden"
                 />
               </label>
+              {jdParseNotice && (
+                <p className="text-[11px] text-amber-600">{jdParseNotice}</p>
+              )}
 
               {jdScreenshotUrl && (
                 /* eslint-disable-next-line @next/next/no-img-element */
@@ -868,18 +896,30 @@ export function JdResumeStudio({
                 </div>
               </div>
 
-              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-[#D4C5FD] bg-[#F9F6FF] p-3 text-xs font-semibold text-[#6E32F5]">
-                <Upload className="h-4 w-4" />
-                {editingResume.fileName
-                  ? `已关联文件: ${editingResume.fileName}`
-                  : '上传简历文件 (.txt / .md 自动读取，.pdf 记录版本)'}
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-[#D4C5FD] bg-[#F9F6FF] p-3 text-xs font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]">
+                {parsingResumeFile ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    正在解析简历文件正文...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    {editingResume.fileName
+                      ? `已关联文件: ${editingResume.fileName}`
+                      : '上传简历文件 (PDF / DOC / DOCX / TXT / MD 自动解析正文)'}
+                  </>
+                )}
                 <input
                   type="file"
-                  accept=".txt,.md,.pdf"
+                  accept=".pdf,.doc,.docx,.txt,.md"
                   onChange={handleResumeFileUpload}
                   className="hidden"
                 />
               </label>
+              {resumeParseNotice && (
+                <p className="text-[11px] text-amber-600">{resumeParseNotice}</p>
+              )}
 
               <div>
                 <label className="text-xs font-semibold text-[#5E5E6E]">
