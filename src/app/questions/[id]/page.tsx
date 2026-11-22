@@ -147,6 +147,7 @@ function QuestionStudyContent() {
       updateQuestionNotes(question.id, {
         localMediaId: saved.id,
         localMediaName: saved.name,
+        ...(saved.cloudUrl ? { videoUrl: saved.cloudUrl } : {}),
       });
       setShowVideoAttach(false);
     } finally {
@@ -215,6 +216,7 @@ function QuestionStudyContent() {
       updateBlock(blockId, {
         localMediaId: saved.id,
         localMediaName: saved.name,
+        ...(saved.cloudUrl ? { videoUrl: saved.cloudUrl } : {}),
       });
     } finally {
       setUploadingBlockId(null);

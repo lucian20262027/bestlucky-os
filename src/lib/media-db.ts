@@ -1,3 +1,5 @@
+import { upload } from '@vercel/blob/client';
+
 const DB_NAME = 'loopos_media_v1';
 const STORE_NAME = 'blobs';
 
@@ -33,7 +35,20 @@ export async function saveLocalMedia(file: File): Promise<{
   name: string;
   mimeType: string;
   sizeBytes: number;
+  cloudUrl?: string;
 }> {
+  let cloudUrl: string | undefined;
+  try {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const blob = await upload(`loopos/${Date.now()}-${safeName}`, file, {
+      access: 'public',
+      handleUploadUrl: '/api/sync/upload',
+    });
+    cloudUrl = blob.url;
+  } catch {
+    // Vercel Blob not configured or offline — keep local IndexedDB seamlessly
+  }
+
   const db = await openMediaDb();
   const id = `media-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const record: StoredMediaRecord = {
@@ -56,6 +71,7 @@ export async function saveLocalMedia(file: File): Promise<{
         name: record.name,
         mimeType: record.mimeType,
         sizeBytes: record.sizeBytes,
+        cloudUrl,
       });
     };
     tx.onerror = () => {

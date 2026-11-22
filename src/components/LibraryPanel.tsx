@@ -154,6 +154,9 @@ export function LibraryPanel({
       const saved = await saveLocalMedia(file);
       setFormLocalMediaId(saved.id);
       setFormLocalMediaName(saved.name);
+      if (saved.cloudUrl) {
+        setFormVideoUrl(saved.cloudUrl);
+      }
       if (!formTitle.trim()) {
         setFormTitle(file.name.replace(/\.[^.]+$/, ''));
       }

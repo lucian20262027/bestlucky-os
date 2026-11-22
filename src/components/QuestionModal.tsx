@@ -97,6 +97,9 @@ export function QuestionModal({
       const saved = await saveLocalMedia(file);
       setLocalMediaId(saved.id);
       setLocalMediaName(saved.name);
+      if (saved.cloudUrl) {
+        setVideoUrl(saved.cloudUrl);
+      }
     } finally {
       setUploadingVideo(false);
       e.target.value = '';

@@ -47,7 +47,7 @@ const ROLE_ICON_MAP: Record<RoleTrack, typeof Rocket> = {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { state, mounted, setSettingsOpen } = useApp();
+  const { state, mounted, syncStatus, setSettingsOpen } = useApp();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [flyout, setFlyout] = useState<'courses' | 'questions' | 'stories' | null>(null);
@@ -303,18 +303,36 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <span suppressHydrationWarning>{mounted ? completedCount : 0}</span>
                 </span>
               </div>
-              <div className="flex items-center gap-1 text-[10px] text-[#848494]">
+              <div className="flex items-center gap-1.5 text-[10px] text-[#848494]">
                 {hasLiveKey ? (
                   <>
                     <Sparkles className="h-2.5 w-2.5 text-[#6E32F5]" />
                     Gemini 4 Live
                   </>
                 ) : (
-                  <>
-                    <Cpu className="h-2.5 w-2.5 text-emerald-600" />
-                    Local Coach
-                  </>
+                  <>Local Coach</>
                 )}
+                <span className="text-[#D4D4DF]">·</span>
+                <span
+                  suppressHydrationWarning
+                  className={
+                    syncStatus === 'synced'
+                      ? 'font-medium text-emerald-600'
+                      : syncStatus === 'syncing'
+                        ? 'font-medium text-[#6E32F5]'
+                        : syncStatus === 'error'
+                          ? 'font-medium text-rose-600'
+                          : 'text-[#848494]'
+                  }
+                >
+                  {syncStatus === 'synced'
+                    ? 'Cloud Synced'
+                    : syncStatus === 'syncing'
+                      ? 'Syncing...'
+                      : syncStatus === 'error'
+                        ? 'Sync Error'
+                        : 'Local Only'}
+                </span>
               </div>
             </div>
           </div>

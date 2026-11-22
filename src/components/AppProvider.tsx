@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   createDefaultState,
   exportStateAsJson,
@@ -27,10 +27,14 @@ import {
   VocabItem,
 } from '@/lib/types';
 
+export type CloudSyncStatus = 'local-only' | 'syncing' | 'synced' | 'error';
+
 interface AppContextValue {
   state: AppState;
   mounted: boolean;
   todayISO: string | null;
+  syncStatus: CloudSyncStatus;
+  lastSyncedAt: string | null;
   settingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
   updateAISettings: (patch: Partial<AISettings>) => void;
@@ -85,22 +89,100 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(() => createDefaultState());
   const [mounted, setMounted] = useState(false);
   const [todayISO, setTodayISO] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<CloudSyncStatus>('local-only');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const cloudConfiguredRef = useRef(false);
+  const syncTimerRef = useRef<number | null>(null);
+
+  const pushStateToCloud = useCallback(async (nextState: AppState) => {
+    if (!cloudConfiguredRef.current) return;
+    setSyncStatus('syncing');
+    try {
+      const res = await fetch('/api/sync/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId: 'lucian-main', state: nextState }),
+      });
+      const json = (await res.json()) as {
+        configured?: boolean;
+        saved?: boolean;
+        updatedAt?: string;
+      };
+      if (res.ok && json.saved) {
+        setSyncStatus('synced');
+        setLastSyncedAt(json.updatedAt ?? new Date().toISOString());
+      } else {
+        setSyncStatus('error');
+      }
+    } catch {
+      setSyncStatus('error');
+    }
+  }, []);
 
   useEffect(() => {
     const loaded = loadAppState();
     setState(loaded);
     setTodayISO(new Date().toISOString().slice(0, 10));
     setMounted(true);
-  }, []);
 
-  const commit = useCallback((updater: (prev: AppState) => AppState) => {
-    setState((prev) => {
-      const next = updater(prev);
-      saveAppState(next);
-      return next;
-    });
-  }, []);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/sync/state?workspaceId=lucian-main');
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          configured?: boolean;
+          state?: unknown;
+          updatedAt?: string | null;
+        };
+        if (cancelled) return;
+        if (!json.configured) {
+          cloudConfiguredRef.current = false;
+          setSyncStatus('local-only');
+          return;
+        }
+        cloudConfiguredRef.current = true;
+        if (json.state) {
+          const parsed = parseImportedState(JSON.stringify(json.state));
+          if (parsed && !cancelled) {
+            setState(parsed);
+            saveAppState(parsed);
+          }
+          setSyncStatus('synced');
+          setLastSyncedAt(json.updatedAt ?? null);
+        } else {
+          // First time connecting cloud DB — seed it with current local state
+          await pushStateToCloud(loaded);
+        }
+      } catch {
+        // Keep local-only gracefully
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+    };
+  }, [pushStateToCloud]);
+
+  const commit = useCallback(
+    (updater: (prev: AppState) => AppState) => {
+      setState((prev) => {
+        const next = updater(prev);
+        saveAppState(next);
+        if (cloudConfiguredRef.current) {
+          setSyncStatus('syncing');
+          if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+          syncTimerRef.current = window.setTimeout(() => {
+            void pushStateToCloud(next);
+          }, 700);
+        }
+        return next;
+      });
+    },
+    [pushStateToCloud]
+  );
 
   const updateAISettings = useCallback(
     (patch: Partial<AISettings>) => {
@@ -531,6 +613,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         state,
         mounted,
         todayISO,
+        syncStatus,
+        lastSyncedAt,
         settingsOpen,
         setSettingsOpen,
         updateAISettings,

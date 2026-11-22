@@ -141,6 +141,7 @@ function CourseSyllabusContent() {
         ...course,
         introLocalMediaId: saved.id,
         introLocalMediaName: saved.name,
+        ...(saved.cloudUrl ? { introVideoUrl: saved.cloudUrl } : {}),
       });
     } finally {
       setUploadingIntro(false);
@@ -156,6 +157,9 @@ function CourseSyllabusContent() {
       const saved = await saveLocalMedia(file);
       setNewLessonLocalMediaId(saved.id);
       setNewLessonLocalMediaName(saved.name);
+      if (saved.cloudUrl) {
+        setNewLessonVideoUrl(saved.cloudUrl);
+      }
     } finally {
       setUploadingVideo(false);
       e.target.value = '';
