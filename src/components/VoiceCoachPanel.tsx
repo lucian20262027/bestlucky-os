@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Loader2, Mic, MicOff, Sparkles, Volume2 } from 'lucide-react';
+import { Check, Copy, Loader2, Mic, MicOff, RotateCcw, Sparkles, Square, Volume2 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 
 interface SpeechReviewResult {
@@ -39,6 +39,8 @@ export function VoiceCoachPanel({ questionTitle, compact = false }: VoiceCoachPa
   const [analyzing, setAnalyzing] = useState(false);
   const [review, setReview] = useState<SpeechReviewResult | null>(null);
   const [micNote, setMicNote] = useState<string | null>(null);
+  const [copiedPolished, setCopiedPolished] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
@@ -158,11 +160,44 @@ export function VoiceCoachPanel({ questionTitle, compact = false }: VoiceCoachPa
     if (!review?.polishedVersion || typeof window === 'undefined' || !('speechSynthesis' in window)) {
       return;
     }
+    if (speaking) {
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
+      return;
+    }
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(review.polishedVersion);
     u.lang = 'en-US';
     u.rate = 0.95;
+    u.onend = () => setSpeaking(false);
+    u.onerror = () => setSpeaking(false);
+    setSpeaking(true);
     window.speechSynthesis.speak(u);
+  };
+
+  const copyPolished = async () => {
+    if (!review?.polishedVersion) return;
+    await navigator.clipboard.writeText(review.polishedVersion);
+    setCopiedPolished(true);
+    window.setTimeout(() => setCopiedPolished(false), 1800);
+  };
+
+  const loadSampleTranscript = () => {
+    setTranscript(
+      'So basically, in my last project, we kind of had a big issue where enterprise customers were seeing like slow RAG responses and some hallucinations. I worked with engineering to build a deterministic validator before any tool call executed, and we also added eval harnesses. As a result, p95 latency dropped from 4.2 seconds to 1.4 seconds and pilot-to-paid conversion improved significantly.'
+    );
+    setReview(null);
+  };
+
+  const resetCoach = () => {
+    setTranscript('');
+    setReview(null);
+    setMicNote(null);
+    setSeconds(0);
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+      setAudioUrl(null);
+    }
   };
 
   return (
@@ -228,15 +263,48 @@ export function VoiceCoachPanel({ questionTitle, compact = false }: VoiceCoachPa
         </div>
       )}
 
-      <div className="mt-3 space-y-2">
+      <div className="mt-3 space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[11px] font-medium text-[#848494]">
+            {recording
+              ? '正在实时转写英文口述...'
+              : '支持麦克风录音实时转写，也可直接粘贴/编辑英文口述稿'}
+          </span>
+          <div className="flex items-center gap-2">
+            {!transcript.trim() && !recording && (
+              <button
+                type="button"
+                onClick={loadSampleTranscript}
+                className="rounded-lg border border-[#ECECF2] bg-[#FAFAFC] px-2.5 py-1 text-[11px] font-medium text-[#5E5E6E] transition hover:border-[#6E32F5]/40 hover:text-[#6E32F5]"
+              >
+                加载示例口述稿
+              </button>
+            )}
+            {(transcript.trim() || audioUrl || review) && !recording && (
+              <button
+                type="button"
+                onClick={resetCoach}
+                className="inline-flex items-center gap-1 rounded-lg border border-[#ECECF2] px-2.5 py-1 text-[11px] font-medium text-[#848494] transition hover:text-[#111118]"
+              >
+                <RotateCcw className="h-3 w-3" />
+                清空
+              </button>
+            )}
+          </div>
+        </div>
         <textarea
-          rows={compact ? 3 : 4}
+          rows={compact ? 3 : 5}
           value={transcript}
           onChange={(e) => setTranscript(e.target.value)}
-          placeholder="录音时会自动转写英文内容；你也可以直接在这里输入/修改你的口述回答..."
+          placeholder="点击右上角 Start Speaking 开始英文开口作答（自动实时转写），或直接在这里输入/修改你的回答..."
           className="w-full rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-3 text-xs leading-relaxed text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none"
         />
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-[#848494]">
+            {transcript.trim()
+              ? `当前约 ${transcript.trim().split(/\s+/).filter(Boolean).length} 词`
+              : '建议时长 60–120 秒'}
+          </span>
           <button
             type="button"
             disabled={!transcript.trim() || analyzing}
@@ -259,54 +327,86 @@ export function VoiceCoachPanel({ questionTitle, compact = false }: VoiceCoachPa
       </div>
 
       {review && (
-        <div className="mt-4 space-y-3 rounded-xl border border-[#6E32F5]/25 bg-[#F9F6FF] p-4">
-          <div className="flex flex-wrap gap-2">
-            <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-[#111118]">
-              Structure: <span className="text-[#6E32F5]">{review.structureScore}/10</span>
-            </span>
-            <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-[#111118]">
-              Clarity: <span className="text-emerald-600">{review.clarityScore}/10</span>
-            </span>
-            <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-[#111118]">
-              Pace: <span className="text-[#6E32F5]">{review.wpm} WPM</span>
-            </span>
-            <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-[#111118]">
-              Fillers: <span className="text-amber-700">{review.fillerCount}</span>
-            </span>
+        <div className="mt-4 space-y-3.5 rounded-2xl border border-[#6E32F5]/20 bg-[#F9F6FF] p-4">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            <div className="rounded-xl border border-[#ECECF2] bg-white px-3 py-2">
+              <div className="text-[10px] font-medium uppercase tracking-wider text-[#848494]">
+                Structure
+              </div>
+              <div className="mt-0.5 text-sm font-bold text-[#6E32F5]">
+                {review.structureScore}/10
+              </div>
+            </div>
+            <div className="rounded-xl border border-[#ECECF2] bg-white px-3 py-2">
+              <div className="text-[10px] font-medium uppercase tracking-wider text-[#848494]">
+                Clarity
+              </div>
+              <div className="mt-0.5 text-sm font-bold text-emerald-600">
+                {review.clarityScore}/10
+              </div>
+            </div>
+            <div className="rounded-xl border border-[#ECECF2] bg-white px-3 py-2">
+              <div className="text-[10px] font-medium uppercase tracking-wider text-[#848494]">
+                Speaking Pace
+              </div>
+              <div className="mt-0.5 text-sm font-bold text-[#111118]">
+                {review.wpm} <span className="text-[11px] font-normal text-[#848494]">WPM</span>
+              </div>
+            </div>
+            <div className="rounded-xl border border-[#ECECF2] bg-white px-3 py-2">
+              <div className="text-[10px] font-medium uppercase tracking-wider text-[#848494]">
+                Filler Words
+              </div>
+              <div className="mt-0.5 text-sm font-bold text-amber-600">
+                {review.fillerCount}
+              </div>
+            </div>
           </div>
 
-          <p className="text-xs leading-relaxed text-[#111118]">{review.feedback}</p>
+          <p className="rounded-xl border border-[#ECECF2] bg-white/80 px-3.5 py-2.5 text-xs leading-relaxed text-[#111118]">
+            {review.feedback}
+          </p>
 
-          <div className="rounded-xl border border-[#ECECF2] bg-white p-3">
-            <div className="flex items-center justify-between">
+          <div className="rounded-xl border border-[#ECECF2] bg-white p-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-[#6E32F5]">
                 Senior / Staff Polished Rewrite
               </span>
-              <button
-                type="button"
-                onClick={speakPolished}
-                className="inline-flex items-center gap-1 rounded-md bg-[#F3ECFF] px-2 py-0.5 text-[11px] font-semibold text-[#6E32F5]"
-              >
-                <Volume2 className="h-3 w-3" />
-                示范朗读
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => void copyPolished()}
+                  className="inline-flex items-center gap-1 rounded-md border border-[#ECECF2] bg-white px-2 py-0.5 text-[11px] font-medium text-[#5E5E6E] hover:text-[#111118]"
+                >
+                  {copiedPolished ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                  {copiedPolished ? '已复制' : '复制'}
+                </button>
+                <button
+                  type="button"
+                  onClick={speakPolished}
+                  className="inline-flex items-center gap-1 rounded-md bg-[#F3ECFF] px-2.5 py-0.5 text-[11px] font-semibold text-[#6E32F5] hover:bg-[#EAE0FF]"
+                >
+                  {speaking ? <Square className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
+                  {speaking ? '停止朗读' : '示范朗读'}
+                </button>
+              </div>
             </div>
-            <p className="mt-1.5 text-xs italic leading-relaxed text-[#111118]">
+            <p className="mt-2 text-xs italic leading-relaxed text-[#111118]">
               &ldquo;{review.polishedVersion}&rdquo;
             </p>
           </div>
 
           {review.vocabUpgrades.length > 0 && (
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-[#848494]">
-                Vocabulary Upgrades
+                Vocabulary Upgrades (高级词替换)
               </div>
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid gap-2.5 sm:grid-cols-3">
                 {review.vocabUpgrades.map((u, idx) => (
-                  <div key={idx} className="rounded-lg border border-[#ECECF2] bg-white p-2.5 text-[11px]">
+                  <div key={idx} className="rounded-xl border border-[#ECECF2] bg-white p-3 text-[11px]">
                     <div className="text-[#848494] line-through">{u.insteadOf}</div>
-                    <div className="font-semibold text-[#6E32F5]">→ {u.use}</div>
-                    <div className="mt-0.5 text-[#5E5E6E]">{u.reason}</div>
+                    <div className="mt-0.5 font-semibold text-[#6E32F5]">→ {u.use}</div>
+                    <div className="mt-1 text-[#5E5E6E]">{u.reason}</div>
                   </div>
                 ))}
               </div>
