@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { useApp } from './AppProvider';
 import { DiagramBoard } from './DiagramBoard';
+import { VoiceCoachPanel } from './VoiceCoachPanel';
 import { requestInterviewerTurn, requestSessionEvaluation } from '@/lib/ai-client';
 import {
   formatDuration,
@@ -97,7 +98,7 @@ export function MockRoom({ questionId }: { questionId: string }) {
   useEffect(() => {
     setSessionId(`sess-${Date.now()}`);
   }, []);
-  const [rightTab, setRightTab] = useState<'scratchpad' | 'diagram' | 'scorecard'>('scratchpad');
+  const [rightTab, setRightTab] = useState<'scratchpad' | 'diagram' | 'scorecard' | 'voice'>('scratchpad');
   const [showPromptSpoiler, setShowPromptSpoiler] = useState(false);
 
   // Timer state
@@ -784,6 +785,18 @@ export function MockRoom({ questionId }: { questionId: string }) {
                   </span>
                 )}
               </button>
+              <button
+                type="button"
+                onClick={() => setRightTab('voice')}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  rightTab === 'voice'
+                    ? 'bg-[var(--ink-primary)] text-white'
+                    : 'text-[var(--ink-secondary)] hover:bg-[var(--canvas)]'
+                }`}
+              >
+                <Mic className="h-3.5 w-3.5" />
+                Voice Coach
+              </button>
             </div>
 
             <button
@@ -803,6 +816,9 @@ export function MockRoom({ questionId }: { questionId: string }) {
 
           {/* Tab Body */}
           <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+            {rightTab === 'voice' && (
+              <VoiceCoachPanel questionTitle={question.title} />
+            )}
             {rightTab === 'scratchpad' && (
               <div className="flex h-full flex-col gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-white px-3.5 py-2.5">

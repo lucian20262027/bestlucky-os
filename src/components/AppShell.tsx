@@ -245,6 +245,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
           </Link>
 
+          <Link
+            href="/pipeline"
+            onClick={() => setMobileOpen(false)}
+            className={navItemClass(pathname.startsWith('/pipeline'))}
+          >
+            <span className="flex items-center gap-2.5">
+              <Briefcase className="h-4 w-4 shrink-0" />
+              <span>Job Pipeline</span>
+            </span>
+          </Link>
+
           {/* Story Bank with Flyout (STAR+L, Content & Videos, Lark Import) */}
           <div
             onMouseEnter={() => openFlyout('stories')}

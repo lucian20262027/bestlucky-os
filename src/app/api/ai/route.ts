@@ -48,7 +48,13 @@ function getLangInstruction(language: LanguageMode): string {
 
 export async function POST(req: NextRequest) {
   let body: {
-    action?: 'interviewer_turn' | 'evaluate_session' | 'generate_loop' | 'analyze_vocab' | 'dashboard_ask';
+    action?:
+      | 'interviewer_turn'
+      | 'evaluate_session'
+      | 'generate_loop'
+      | 'analyze_vocab'
+      | 'dashboard_ask'
+      | 'review_speech';
     model?: string;
     language?: LanguageMode;
     payload?: Record<string, unknown>;
@@ -73,6 +79,51 @@ export async function POST(req: NextRequest) {
   const apiKey = headerKey || envKey || '';
 
   const runFallback = async (warning?: string) => {
+    if (action === 'review_speech') {
+      const transcript = String(payload.transcript ?? '').trim();
+      const durationSec = Math.max(10, Number(payload.durationSec ?? 45));
+      const words = transcript.split(/\s+/).filter(Boolean);
+      const wpm = Math.round((words.length / durationSec) * 60);
+      const fillerMatches = transcript.match(/\b(um+|uh+|like|basically|actually|you know|sort of)\b/gi) ?? [];
+      const hasMetrics = /\d+%|\$\d+|\d+x|ms|sla|p95|kpi|roi/i.test(transcript);
+      const structureScore = Math.min(10, Math.max(5, (words.length > 40 ? 7 : 5) + (hasMetrics ? 2 : 0)));
+      const clarityScore = Math.min(10, Math.max(5, 9 - Math.min(4, fillerMatches.length)));
+
+      return NextResponse.json({
+        mode: 'local_fallback',
+        warning,
+        data: {
+          structureScore,
+          clarityScore,
+          fillerCount: fillerMatches.length,
+          wpm,
+          feedback: hasMetrics
+            ? '结构清晰且包含量化指标！建议开头先用 1 句话点明结论（Direct Answer），再展开系统边界与权衡。'
+            : '建议补充具体的量化结果（如 P95 延迟、准确率提升 %、回本周期）和更强的系统边界词汇，让表达更像 Senior/Staff。',
+          polishedVersion:
+            words.length > 15
+              ? `Direct answer: ${transcript.replace(/\b(um+|uh+|like|basically)\b/gi, '').replace(/\s+/g, ' ').trim()} — anchored by deterministic validation, measurable SLA gains, and clear fallback ownership.`
+              : 'Direct answer: We paired probabilistic LLM generation with deterministic schema validators, cutting production errors while keeping P95 latency under SLA.',
+          vocabUpgrades: [
+            {
+              insteadOf: 'check / make sure',
+              use: 'deterministic validation',
+              reason: '体现对 AI 工程确定性护栏的掌握',
+            },
+            {
+              insteadOf: 'find why it broke',
+              use: 'automated failure attribution',
+              reason: 'TPM / Infra 高级术语，精准区分模型/工具/权限故障',
+            },
+            {
+              insteadOf: 'run safely without duplicates',
+              use: 'idempotent write-back',
+              reason: 'FDE/系统设计高频加分词',
+            },
+          ],
+        },
+      });
+    }
     if (action === 'dashboard_ask') {
       const q = String(payload.query ?? '').trim();
       const lower = q.toLowerCase();
@@ -147,6 +198,67 @@ export async function POST(req: NextRequest) {
 
   try {
     const ai = new GoogleGenAI({ apiKey });
+
+    if (action === 'review_speech') {
+      const questionTitle = String(payload.questionTitle ?? 'Interview Question');
+      const transcript = String(payload.transcript ?? '').trim();
+      const durationSec = Math.max(10, Number(payload.durationSec ?? 45));
+      if (!transcript) {
+        return NextResponse.json({ error: 'Transcript is required' }, { status: 400 });
+      }
+      const words = transcript.split(/\s+/).filter(Boolean);
+      const wpm = Math.round((words.length / durationSec) * 60);
+      const fillerMatches = transcript.match(/\b(um+|uh+|like|basically|actually|you know|sort of)\b/gi) ?? [];
+
+      const interaction = await ai.interactions.create({
+        model: chosenModel,
+        input: `You are an executive interview speech coach for Lucian.
+Question: "${questionTitle}"
+Candidate's spoken transcript (${durationSec}s, ~${wpm} WPM):
+"""
+${transcript}
+"""
+Evaluate structure (STAR / MECE / Direct-Answer-First), clarity, and executive vocabulary.
+${getLangInstruction(language)}
+Return strict JSON:
+- structureScore: integer 1-10
+- clarityScore: integer 1-10
+- fillerCount: integer (detected filler words count, at least ${fillerMatches.length})
+- wpm: integer (${wpm})
+- feedback: 2-3 crisp sentences of actionable feedback
+- polishedVersion: crisp senior/staff-level English rewrite of their answer (2-4 sentences)
+- vocabUpgrades: 2-3 objects { insteadOf, use, reason } upgrading weak phrases to high-signal terms (e.g. deterministic, attribution, idempotent, provenance, observability)`,
+        response_mime_type: 'application/json',
+        response_format: {
+          type: 'object',
+          properties: {
+            structureScore: { type: 'number' },
+            clarityScore: { type: 'number' },
+            fillerCount: { type: 'number' },
+            wpm: { type: 'number' },
+            feedback: { type: 'string' },
+            polishedVersion: { type: 'string' },
+            vocabUpgrades: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  insteadOf: { type: 'string' },
+                  use: { type: 'string' },
+                  reason: { type: 'string' },
+                },
+                required: ['insteadOf', 'use', 'reason'],
+              },
+            },
+          },
+          required: ['structureScore', 'clarityScore', 'fillerCount', 'wpm', 'feedback', 'polishedVersion', 'vocabUpgrades'],
+        },
+        store: false,
+      });
+      const raw = stripCodeFences(interaction.output_text ?? '');
+      const parsed = JSON.parse(raw);
+      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: parsed });
+    }
 
     if (action === 'dashboard_ask') {
       const q = String(payload.query ?? '').trim();

@@ -26,6 +26,7 @@ import { useApp } from '@/components/AppProvider';
 import { QuestionModal } from '@/components/QuestionModal';
 import { TypographyPicker } from '@/components/TypographyPicker';
 import { VideoPlayer } from '@/components/VideoPlayer';
+import { VoiceCoachPanel } from '@/components/VoiceCoachPanel';
 import { requestInterviewerTurn } from '@/lib/ai-client';
 import { getQuestionById, getQuestionStatus, roleBadgeClasses } from '@/lib/helpers';
 import { saveLocalMedia } from '@/lib/media-db';
@@ -562,6 +563,10 @@ ${question.redFlags.map((r) => `- Avoid: ${r}`).join('\n')}`;
                 localMediaId={notes.localMediaId}
                 localMediaName={notes.localMediaName}
               />
+            </div>
+
+            <div className="mt-4">
+              <VoiceCoachPanel questionTitle={question.title} compact />
             </div>
           </section>
 

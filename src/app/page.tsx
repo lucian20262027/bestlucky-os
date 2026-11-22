@@ -8,6 +8,9 @@ import {
   MessageSquare,
   Plus,
   RefreshCw,
+  Sparkles,
+  Volume2,
+  Zap,
 } from 'lucide-react';
 import { AffirmationVideoStrip } from '@/components/AffirmationVideoStrip';
 import { useApp } from '@/components/AppProvider';
@@ -18,6 +21,7 @@ import {
   ScheduleCalendarPanel,
 } from '@/components/ScheduleCalendarPanel';
 import { TodoWorkspacePanel } from '@/components/TodoWorkspacePanel';
+import { WarmupModal } from '@/components/WarmupModal';
 import { getDailyQuote } from '@/lib/daily-quotes';
 import { getAllQuestions } from '@/lib/helpers';
 
@@ -40,6 +44,7 @@ export default function DashboardPage() {
 
   const [quoteOffset, setQuoteOffset] = useState(0);
   const [addQuestionOpen, setAddQuestionOpen] = useState(false);
+  const [warmupOpen, setWarmupOpen] = useState(false);
 
   // Google Calendar ICS sync state
   const [gcalEvents, setGcalEvents] = useState<CalendarEventItem[]>([]);
@@ -94,6 +99,25 @@ export default function DashboardPage() {
     [todayISO, quoteOffset]
   );
 
+  const dailyReview = useMemo(() => {
+    const dayIdx = todayISO ? Math.floor(Date.parse(`${todayISO}T00:00:00Z`) / 86400000) : 0;
+    const snippets = state.knowledgeSnippets;
+    const vocabs = state.vocabItems;
+    const snippet = snippets.length > 0 ? snippets[dayIdx % snippets.length] : null;
+    const vocab1 = vocabs.length > 0 ? vocabs[dayIdx % vocabs.length] : null;
+    const vocab2 = vocabs.length > 1 ? vocabs[(dayIdx + 1) % vocabs.length] : null;
+    return { snippet, vocabs: [vocab1, vocab2].filter(Boolean) };
+  }, [todayISO, state.knowledgeSnippets, state.vocabItems]);
+
+  const speakWord = (word: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(word);
+    u.lang = 'en-US';
+    u.rate = 0.9;
+    window.speechSynthesis.speak(u);
+  };
+
   const handleSaveGcalUrl = (url: string) => {
     updateGoogleCalendarUrl(url);
     if (url) {
@@ -130,6 +154,14 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setWarmupOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#6E32F5] to-[#8B5CF6] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:opacity-95"
+          >
+            <Zap className="h-3.5 w-3.5" />
+            15-Min Warmup
+          </button>
           <Link
             href="/questions"
             className="rounded-xl border border-[#ECECF2] bg-white px-3 py-1.5 text-xs font-semibold text-[#111118] shadow-2xs transition hover:border-[#6E32F5]/50"
@@ -196,6 +228,69 @@ export default function DashboardPage() {
         onDeleteTodo={deleteTodo}
       />
 
+      {/* Row 4.5: Daily Auto-Review Push (Spaced Repetition) */}
+      {(dailyReview.snippet || dailyReview.vocabs.length > 0) && (
+        <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-2xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-[#6E32F5]" />
+              <h2 className="text-sm font-semibold text-[#111118]">
+                Daily Auto-Review Push · 今日自动复习推送
+              </h2>
+            </div>
+            <Link
+              href="/knowledge"
+              className="text-xs font-semibold text-[#6E32F5] hover:underline"
+            >
+              进入闪卡抽查 →
+            </Link>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-12">
+            {dailyReview.snippet && (
+              <div className="rounded-xl border border-[#6E32F5]/20 bg-[#F9F6FF] p-3.5 lg:col-span-7">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6E32F5]">
+                  Today&apos;s Soundbite Recall
+                </div>
+                <div className="mt-1 text-xs font-semibold text-[#111118]">
+                  {dailyReview.snippet.title}
+                </div>
+                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[#5E5E6E]">
+                  {dailyReview.snippet.soundbite}
+                </p>
+              </div>
+            )}
+            <div className="grid gap-2 sm:grid-cols-2 lg:col-span-5">
+              {dailyReview.vocabs.map((v) =>
+                v ? (
+                  <div
+                    key={v.id}
+                    className="flex flex-col justify-between rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-[#111118]">{v.word}</span>
+                      <button
+                        type="button"
+                        onClick={() => speakWord(v.word)}
+                        className="rounded-full bg-white p-1 text-[#6E32F5] shadow-2xs hover:bg-[#6E32F5] hover:text-white"
+                        title="发音"
+                      >
+                        <Volume2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                    <div className="mt-0.5 truncate font-mono text-[10px] text-[#6E32F5]">
+                      {v.phonetic}
+                    </div>
+                    <div className="mt-1 line-clamp-1 text-[11px] text-[#5E5E6E]">
+                      {v.meaning}
+                    </div>
+                  </div>
+                ) : null
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Row 5: RareUI 3D Frosted Folder Launchpad (4 Cards) */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
@@ -247,6 +342,8 @@ export default function DashboardPage() {
           if (notes) updateQuestionNotes(q.id, notes);
         }}
       />
+
+      <WarmupModal open={warmupOpen} onClose={() => setWarmupOpen(false)} />
     </div>
   );
 }

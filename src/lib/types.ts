@@ -371,6 +371,38 @@ export interface AffirmationVideo {
   localMediaName?: string;
 }
 
+export type PipelineStage =
+  | 'wishlist'
+  | 'applied'
+  | 'screen'
+  | 'technical'
+  | 'onsite'
+  | 'offer';
+
+export interface PostInterviewDebrief {
+  roundName: string;
+  dateISO: string;
+  wentWell: string;
+  stumbledOn: string;
+  followUpProbes: string;
+  nextAction: string;
+}
+
+export interface JobApplication {
+  id: string;
+  company: string;
+  roleTitle: string;
+  roleTrack: RoleTrack;
+  stage: PipelineStage;
+  jdUrl?: string;
+  resumeVersion?: string;
+  nextInterviewDate?: string;
+  recruiterName?: string;
+  notes?: string;
+  debriefs: PostInterviewDebrief[];
+  updatedAt: string;
+}
+
 export interface AppState {
   profile: UserProfile;
   aiSettings: AISettings;
@@ -389,6 +421,7 @@ export interface AppState {
   knowledgeSnippets: KnowledgeSnippet[];
   todos: TodoItem[];
   affirmationVideos: AffirmationVideo[];
+  applications: JobApplication[];
   googleCalendarIcsUrl?: string;
   lastCustomLoop: CustomLoopPlan | null;
 }

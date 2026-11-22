@@ -2,7 +2,48 @@ import { SEED_COURSES } from './seed-courses';
 import { SEED_KNOWLEDGE_SNIPPETS, SEED_VOCAB_ITEMS } from './seed-knowledge';
 import { SEED_LIBRARY_ITEMS, SEED_QUESTION_NOTES } from './seed-library';
 import { DEFAULT_RESUME_SUMMARY, SEED_STORIES } from './seed-stories';
-import { AffirmationVideo, AppState, RoleTrack, TodoItem } from './types';
+import { AffirmationVideo, AppState, JobApplication, RoleTrack, TodoItem } from './types';
+
+const SEED_APPLICATIONS: JobApplication[] = [
+  {
+    id: 'app-openai',
+    company: 'OpenAI',
+    roleTitle: 'Forward Deployed Engineer',
+    roleTrack: 'fde',
+    stage: 'technical',
+    jdUrl: 'https://openai.com/careers',
+    resumeVersion: 'Lucian_Resume_FDE_v4.pdf',
+    nextInterviewDate: '2026-11-28',
+    notes: 'Focus on Week-2 vertical slice, deterministic schema validation & evals.',
+    debriefs: [],
+    updatedAt: '2026-11-22T00:00:00.000Z',
+  },
+  {
+    id: 'app-anthropic',
+    company: 'Anthropic',
+    roleTitle: 'Applied AI / FDPM',
+    roleTrack: 'fdpm',
+    stage: 'screen',
+    jdUrl: 'https://www.anthropic.com/careers',
+    resumeVersion: 'Lucian_Resume_AI_PM_v3.pdf',
+    nextInterviewDate: '2026-12-03',
+    notes: 'Highlight probabilistic generation + deterministic compiler pattern.',
+    debriefs: [],
+    updatedAt: '2026-11-22T00:00:00.000Z',
+  },
+  {
+    id: 'app-nvidia',
+    company: 'NVIDIA',
+    roleTitle: 'TPM — AI Infra Resilience',
+    roleTrack: 'pgm',
+    stage: 'applied',
+    jdUrl: 'https://www.nvidia.com/en-us/about-nvidia/careers/',
+    resumeVersion: 'Lucian_Resume_TPM_v2.pdf',
+    notes: 'Prep Reverse Q&A on automated failure attribution across model/tool/permission layers.',
+    debriefs: [],
+    updatedAt: '2026-11-22T00:00:00.000Z',
+  },
+];
 
 const SEED_AFFIRMATION_VIDEOS: AffirmationVideo[] = [
   {
@@ -139,6 +180,7 @@ export function createDefaultState(baseTodayISO?: string): AppState {
     knowledgeSnippets: SEED_KNOWLEDGE_SNIPPETS,
     todos: SEED_TODOS,
     affirmationVideos: SEED_AFFIRMATION_VIDEOS,
+    applications: SEED_APPLICATIONS,
     googleCalendarIcsUrl: '',
     lastCustomLoop: null,
   };
@@ -222,6 +264,10 @@ export function loadAppState(): AppState {
         Array.isArray(parsed.affirmationVideos) && parsed.affirmationVideos.length > 0
           ? parsed.affirmationVideos
           : defaults.affirmationVideos,
+      applications:
+        Array.isArray(parsed.applications) && parsed.applications.length > 0
+          ? parsed.applications
+          : defaults.applications,
       googleCalendarIcsUrl:
         typeof parsed.googleCalendarIcsUrl === 'string'
           ? parsed.googleCalendarIcsUrl
@@ -290,6 +336,10 @@ export function parseImportedState(jsonText: string): AppState | null {
         Array.isArray(parsed.affirmationVideos) && parsed.affirmationVideos.length > 0
           ? parsed.affirmationVideos
           : defaults.affirmationVideos,
+      applications:
+        Array.isArray(parsed.applications) && parsed.applications.length > 0
+          ? parsed.applications
+          : defaults.applications,
       googleCalendarIcsUrl:
         typeof parsed.googleCalendarIcsUrl === 'string'
           ? parsed.googleCalendarIcsUrl

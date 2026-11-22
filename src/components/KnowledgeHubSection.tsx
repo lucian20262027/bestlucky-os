@@ -8,6 +8,7 @@ import {
   Edit3,
   Loader2,
   Plus,
+  RotateCw,
   Search,
   Sparkles,
   Trash2,
@@ -32,6 +33,9 @@ export default function KnowledgeHubSection() {
   } = useApp();
 
   const [subTab, setSubTab] = useState<HubSubTab>('snippets');
+  const [flashcardMode, setFlashcardMode] = useState(false);
+  const [flashIdx, setFlashIdx] = useState(0);
+  const [flashFlipped, setFlashFlipped] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | RoleTrack>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -315,6 +319,25 @@ export default function KnowledgeHubSection() {
             ))}
           </select>
 
+          {subTab === 'snippets' && filteredSnippets.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setFlashcardMode((v) => !v);
+                setFlashIdx(0);
+                setFlashFlipped(false);
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
+                flashcardMode
+                  ? 'border-[#6E32F5] bg-[#F3ECFF] text-[#6E32F5]'
+                  : 'border-[var(--border)] bg-white text-[var(--ink-secondary)] hover:border-[var(--accent)]'
+              }`}
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+              {flashcardMode ? '退出闪卡' : '闪卡抽查'}
+            </button>
+          )}
+
           <button
             type="button"
             onClick={subTab === 'vocab' ? openNewVocab : openNewSnippet}
@@ -326,8 +349,84 @@ export default function KnowledgeHubSection() {
         </div>
       </div>
 
-      {/* Sub-module 1: Knowledge Snippets / Soundbites */}
-      {subTab === 'snippets' && (
+      {/* Sub-module 1: Knowledge Snippets / Soundbites (List or Flashcard Mode) */}
+      {subTab === 'snippets' && flashcardMode && filteredSnippets.length > 0 && (
+        <div className="rounded-2xl border border-[#6E32F5]/30 bg-[#F9F6FF] p-6">
+          {(() => {
+            const card = filteredSnippets[flashIdx % filteredSnippets.length];
+            return (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between text-xs text-[#6E32F5]">
+                  <span className="font-semibold">
+                    Flashcard {(flashIdx % filteredSnippets.length) + 1} / {filteredSnippets.length}
+                  </span>
+                  <div className="flex gap-1">
+                    {card.roles.map((r) => (
+                      <span
+                        key={r}
+                        className={`rounded px-2 py-0.5 text-[10px] font-semibold ${roleBadgeClasses(
+                          r
+                        )}`}
+                      >
+                        {ROLES_BY_ID[r]?.shortLabel}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-[#ECECF2] bg-white p-5">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-[#848494]">
+                    Trigger Question (试着先口述回答，再翻牌核对)
+                  </div>
+                  <p className="mt-2 text-base font-semibold text-[#111118]">
+                    {card.triggerQuestion || card.title}
+                  </p>
+                </div>
+
+                {flashFlipped ? (
+                  <div className="space-y-3 rounded-xl border border-emerald-200 bg-white p-5">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
+                      Target Soundbite &amp; Delivery
+                    </div>
+                    <p className="text-sm leading-relaxed text-[#111118]">{card.soundbite}</p>
+                    {card.deliveryTemplate && (
+                      <p className="whitespace-pre-line border-t border-[#F2F2F7] pt-3 text-xs leading-relaxed text-[#5E5E6E]">
+                        {card.deliveryTemplate}
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFlashFlipped((v) => !v)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#6E32F5] px-4 py-2 text-xs font-semibold text-white"
+                  >
+                    <RotateCw className="h-3.5 w-3.5" />
+                    {flashFlipped ? '收起答案' : '翻牌查看金句'}
+                  </button>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFlashIdx((i) => (i + 1) % filteredSnippets.length);
+                        setFlashFlipped(false);
+                      }}
+                      className="rounded-xl border border-[#ECECF2] bg-white px-4 py-2 text-xs font-semibold text-[#111118] hover:border-[#6E32F5]"
+                    >
+                      下一张 →
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {subTab === 'snippets' && !flashcardMode && (
         <div className="space-y-4">
           {filteredSnippets.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--canvas)]/60 p-8 text-center text-xs text-[var(--ink-muted)]">

@@ -15,6 +15,7 @@ import {
   CourseSyllabus,
   CustomLoopPlan,
   InterviewQuestion,
+  JobApplication,
   KnowledgeSnippet,
   LarkSettings,
   LibraryItem,
@@ -80,6 +81,8 @@ interface AppContextValue {
   toggleTodo: (id: string) => void;
   deleteTodo: (id: string) => void;
   updateAffirmationVideos: (videos: AffirmationVideo[]) => void;
+  upsertApplication: (app: JobApplication) => void;
+  deleteApplication: (id: string) => void;
   updateGoogleCalendarUrl: (url: string) => void;
   exportBackup: () => string;
   importBackup: (jsonText: string) => boolean;
@@ -437,13 +440,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       libraryItems: LibraryItem[];
       stories: StarStory[];
     }) => {
-      commit((prev) => ({
-        ...prev,
-        customQuestions: [...payload.questions, ...prev.customQuestions],
-        questionNotes: { ...prev.questionNotes, ...payload.questionNotes },
-        libraryItems: [...payload.libraryItems, ...prev.libraryItems],
-        stories: [...payload.stories, ...prev.stories],
-      }));
+      commit((prev) => {
+        const norm = (s: string) => s.trim().toLowerCase();
+        const existingQT = new Set(prev.customQuestions.map((q) => norm(q.title)));
+        const existingLT = new Set(prev.libraryItems.map((l) => norm(l.title)));
+        const existingST = new Set(prev.stories.map((s) => norm(s.title)));
+
+        const newQuestions = payload.questions.filter((q) => !existingQT.has(norm(q.title)));
+        const newLibrary = payload.libraryItems.filter((l) => !existingLT.has(norm(l.title)));
+        const newStories = payload.stories.filter((s) => !existingST.has(norm(s.title)));
+
+        return {
+          ...prev,
+          customQuestions: [...newQuestions, ...prev.customQuestions],
+          questionNotes: { ...prev.questionNotes, ...payload.questionNotes },
+          libraryItems: [...newLibrary, ...prev.libraryItems],
+          stories: [...newStories, ...prev.stories],
+        };
+      });
     },
     [commit]
   );
@@ -657,6 +671,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [commit]
   );
 
+  const upsertApplication = useCallback(
+    (app: JobApplication) => {
+      commit((prev) => {
+        const exists = prev.applications.some((a) => a.id === app.id);
+        return {
+          ...prev,
+          applications: exists
+            ? prev.applications.map((a) => (a.id === app.id ? app : a))
+            : [app, ...prev.applications],
+        };
+      });
+    },
+    [commit]
+  );
+
+  const deleteApplication = useCallback(
+    (id: string) => {
+      commit((prev) => ({
+        ...prev,
+        applications: prev.applications.filter((a) => a.id !== id),
+      }));
+    },
+    [commit]
+  );
+
   const updateGoogleCalendarUrl = useCallback(
     (url: string) => {
       commit((prev) => ({
@@ -724,6 +763,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toggleTodo,
         deleteTodo,
         updateAffirmationVideos,
+        upsertApplication,
+        deleteApplication,
         updateGoogleCalendarUrl,
         exportBackup,
         importBackup,
