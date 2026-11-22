@@ -75,6 +75,7 @@ interface AppContextValue {
   upsertKnowledgeSnippet: (snippet: KnowledgeSnippet) => void;
   deleteKnowledgeSnippet: (id: string) => void;
   addTodo: (todo: Omit<TodoItem, 'id' | 'createdAt' | 'completed'>) => void;
+  updateTodo: (id: string, patch: Partial<TodoItem>) => void;
   toggleTodo: (id: string) => void;
   deleteTodo: (id: string) => void;
   updateGoogleCalendarUrl: (url: string) => void;
@@ -612,6 +613,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [commit]
   );
 
+  const updateTodo = useCallback(
+    (id: string, patch: Partial<TodoItem>) => {
+      commit((prev) => ({
+        ...prev,
+        todos: prev.todos.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+      }));
+    },
+    [commit]
+  );
+
   const toggleTodo = useCallback(
     (id: string) => {
       commit((prev) => ({
@@ -697,6 +708,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         upsertKnowledgeSnippet,
         deleteKnowledgeSnippet,
         addTodo,
+        updateTodo,
         toggleTodo,
         deleteTodo,
         updateGoogleCalendarUrl,

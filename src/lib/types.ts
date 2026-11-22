@@ -349,12 +349,16 @@ export interface KnowledgeSnippet {
   updatedAt: string;
 }
 
+export type TodoPriority = 'urgent' | 'p0' | 'p1' | 'p2';
+
 export interface TodoItem {
   id: string;
   title: string;
   completed: boolean;
+  priority?: TodoPriority;
   role?: RoleTrack;
   dueLabel?: string;
+  dueDateISO?: string;
   createdAt: string;
 }
 

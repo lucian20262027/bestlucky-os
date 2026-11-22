@@ -5,16 +5,11 @@ import Link from 'next/link';
 import {
   ArrowRight,
   BookMarked,
-  Check,
-  CheckSquare,
   FileUp,
   Loader2,
   MessageSquare,
-  Play,
   Plus,
   Sparkles,
-  Square,
-  Trash2,
   X,
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
@@ -24,46 +19,14 @@ import {
   type CalendarEventItem,
   ScheduleCalendarPanel,
 } from '@/components/ScheduleCalendarPanel';
-import { getAllQuestions, roleBadgeClasses } from '@/lib/helpers';
-import { ROLE_LIST, ROLES_BY_ID } from '@/lib/roles';
-import { CourseSyllabus, RoleTrack } from '@/lib/types';
+import { TodoWorkspacePanel } from '@/components/TodoWorkspacePanel';
+import { getAllQuestions } from '@/lib/helpers';
 
 interface CopilotReply {
   query: string;
   answer: string;
   links: Array<{ label: string; href: string }>;
   mode?: string;
-}
-
-function computeCourseStats(course?: CourseSyllabus) {
-  if (!course) return { total: 0, done: 0, pct: 0, nextTitle: 'Start learning' };
-  let total = 0;
-  let done = 0;
-  let nextTitle = '';
-  course.modules.forEach((m) =>
-    m.subSections.forEach((s) =>
-      s.lessons.forEach((l) => {
-        total++;
-        if (l.completed) done++;
-        else if (!nextTitle) nextTitle = l.title;
-      })
-    )
-  );
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  return { total, done, pct, nextTitle: nextTitle || course.modules[0]?.title || 'Course Intro' };
-}
-
-function buildGoogleCalendarUrl(title: string, dateISO: string, details: string): string {
-  const compactDate = dateISO.replace(/-/g, '');
-  const start = `${compactDate}T100000`;
-  const end = `${compactDate}T110000`;
-  const params = new URLSearchParams({
-    action: 'TEMPLATE',
-    text: title,
-    dates: `${start}/${end}`,
-    details,
-  });
-  return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
 export default function DashboardPage() {
@@ -76,6 +39,7 @@ export default function DashboardPage() {
     addCustomQuestion,
     updateQuestionNotes,
     addTodo,
+    updateTodo,
     toggleTodo,
     deleteTodo,
     updateGoogleCalendarUrl,
@@ -85,10 +49,6 @@ export default function DashboardPage() {
   const [studyPrompt, setStudyPrompt] = useState('');
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotReply, setCopilotReply] = useState<CopilotReply | null>(null);
-
-  // Todo state
-  const [newTodoTitle, setNewTodoTitle] = useState('');
-  const [newTodoRole, setNewTodoRole] = useState<RoleTrack>('fde');
   const [addQuestionOpen, setAddQuestionOpen] = useState(false);
 
   // Google Calendar ICS sync state
@@ -138,16 +98,7 @@ export default function DashboardPage() {
     return `Good evening, ${displayName}`;
   }, [mounted, state.profile.name]);
 
-  const activeCourseRole: RoleTrack =
-    state.sessions[0]?.role ?? state.upcomingLoops[0]?.role ?? 'fde';
-  const activeCourse = state.courses[activeCourseRole] ?? state.courses.fde;
-  const activeStats = computeCourseStats(activeCourse);
-
   const allQuestions = useMemo(() => getAllQuestions(state), [state]);
-  const completedTodos = useMemo(
-    () => state.todos.filter((t) => t.completed).length,
-    [state.todos]
-  );
 
   const askCopilot = async (rawQuery: string) => {
     const q = rawQuery.trim();
@@ -189,17 +140,6 @@ export default function DashboardPage() {
   const handleStudyPromptSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     void askCopilot(studyPrompt);
-  };
-
-  const handleAddTodo = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTodoTitle.trim()) return;
-    addTodo({
-      title: newTodoTitle.trim(),
-      role: newTodoRole,
-      dueLabel: 'Today',
-    });
-    setNewTodoTitle('');
   };
 
   const handleSaveGcalUrl = (url: string) => {
@@ -353,168 +293,16 @@ export default function DashboardPage() {
         onRemoveLoop={removeUpcomingLoop}
       />
 
-      {/* Row 4: Today's Prep Todo List + Continue Learning */}
-      <div className="grid gap-5 lg:grid-cols-12">
-        {/* Today's Prep Todo List */}
-        <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-2xs lg:col-span-7">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <CheckSquare className="h-4 w-4 text-[#6E32F5]" />
-              <h2 className="text-base font-semibold text-[#111118]">
-                Today&apos;s Prep Todo List
-              </h2>
-              <span
-                suppressHydrationWarning
-                className="rounded-full bg-[#F3ECFF] px-2 py-0.5 text-[11px] font-semibold text-[#6E32F5]"
-              >
-                {mounted ? `${completedTodos}/${state.todos.length} done` : '0/0 done'}
-              </span>
-            </div>
-          </div>
-
-          <form onSubmit={handleAddTodo} className="mt-3 flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              value={newTodoTitle}
-              onChange={(e) => setNewTodoTitle(e.target.value)}
-              placeholder="Add an interview prep task (e.g. Record 2-min intro for Palantir FDE)..."
-              className="min-w-[180px] flex-1 rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-3 py-2 text-xs text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none"
-            />
-            <select
-              value={newTodoRole}
-              onChange={(e) => setNewTodoRole(e.target.value as RoleTrack)}
-              className="rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-2.5 py-2 text-xs font-medium text-[#111118] focus:border-[#6E32F5] focus:outline-none"
-            >
-              {ROLE_LIST.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.shortLabel}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              disabled={!newTodoTitle.trim()}
-              className="inline-flex items-center gap-1 rounded-xl bg-[#6E32F5] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[#5B24D6] disabled:opacity-50"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add
-            </button>
-          </form>
-
-          <div className="mt-3 divide-y divide-[#F0F0F5]">
-            {state.todos.length === 0 ? (
-              <p className="py-4 text-center text-xs text-[#848494]">
-                No tasks yet — add your first prep goal above.
-              </p>
-            ) : (
-              state.todos.map((todo) => (
-                <div key={todo.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <button
-                    type="button"
-                    onClick={() => toggleTodo(todo.id)}
-                    className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
-                  >
-                    {todo.completed ? (
-                      <Check className="h-4 w-4 shrink-0 rounded bg-[#6E32F5] p-0.5 text-white" />
-                    ) : (
-                      <Square className="h-4 w-4 shrink-0 text-[#9E9EAE]" />
-                    )}
-                    <span
-                      className={`truncate text-sm ${
-                        todo.completed
-                          ? 'text-[#9E9EAE] line-through'
-                          : 'font-medium text-[#111118]'
-                      }`}
-                    >
-                      {todo.title}
-                    </span>
-                  </button>
-
-                  <div className="flex shrink-0 items-center gap-2">
-                    {todo.role && (
-                      <span
-                        className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${roleBadgeClasses(
-                          todo.role
-                        )}`}
-                      >
-                        {ROLES_BY_ID[todo.role]?.shortLabel ?? todo.role}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => deleteTodo(todo.id)}
-                      className="rounded-md p-1 text-[#A0A0B0] hover:text-rose-600"
-                      title="Delete task"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
-        {/* Continue Learning */}
-        <section className="flex flex-col justify-between rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-2xs lg:col-span-5">
-          <div>
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-[#111118]">Continue learning</h2>
-              <Link
-                href="/courses"
-                className="text-xs font-medium text-[#6E32F5] hover:underline"
-              >
-                See all courses
-              </Link>
-            </div>
-
-            <div className="mt-4 rounded-xl border border-[#F0F0F5] bg-[#FAFAFC] p-4">
-              <div className="flex items-center gap-3.5">
-                <div className="relative flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-[#1E1438] via-[#3A1E7A] to-[#6E32F5] text-white">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 backdrop-blur-xs">
-                    <Play className="h-3 w-3 fill-white text-white" />
-                  </div>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6E32F5]">
-                    {ROLES_BY_ID[activeCourseRole]?.label} Prep
-                  </div>
-                  <div className="mt-0.5 truncate text-sm font-semibold text-[#111118]">
-                    {activeStats.nextTitle}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <div className="flex flex-1 items-center gap-2.5">
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#ECECF2]">
-                    <div
-                      className="h-full rounded-full bg-[#6E32F5]"
-                      style={{ width: `${Math.max(activeStats.pct, 8)}%` }}
-                    />
-                  </div>
-                  <span className="shrink-0 text-[11px] text-[#848494]" suppressHydrationWarning>
-                    {mounted ? `${activeStats.pct}%` : '0%'}
-                  </span>
-                </div>
-                <Link
-                  href={`/courses/${activeCourseRole}`}
-                  className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[#6E32F5] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#5B24D6]"
-                >
-                  Continue
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between border-t border-[#F2F2F7] pt-3 text-xs text-[#5E5E6E]">
-            <span>Active track: {ROLES_BY_ID[activeCourseRole]?.shortLabel}</span>
-            <Link href="/frameworks" className="font-medium text-[#6E32F5] hover:underline">
-              7-Role Playbook →
-            </Link>
-          </div>
-        </section>
-      </div>
+      {/* Row 4: Full-Width Benchmarked Prep Todo Workspace */}
+      <TodoWorkspacePanel
+        mounted={mounted}
+        todayISO={todayISO}
+        todos={state.todos}
+        onAddTodo={addTodo}
+        onUpdateTodo={updateTodo}
+        onToggleTodo={toggleTodo}
+        onDeleteTodo={deleteTodo}
+      />
 
       {/* Row 5: RareUI 3D Frosted Folder Launchpad (4 Cards) */}
       <section className="space-y-3">
