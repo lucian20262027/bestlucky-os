@@ -194,8 +194,8 @@ export function AffirmationVideoStrip({
         )}
 
         {/* Top Gradient + Top-Right Pill Switcher (Bomie.ai style) */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/70 to-transparent" />
-        <div className="absolute top-3.5 right-3.5 left-3.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-20 bg-gradient-to-b from-black/70 to-transparent" />
+        <div className="absolute top-3.5 right-3.5 left-3.5 z-10 flex flex-wrap items-center justify-between gap-2">
           <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/45 px-3 py-1 text-[11px] font-medium text-white/90 backdrop-blur-md">
             <Sparkles className="h-3 w-3 text-[#C4B5FD]" />
             Daily Mindset Stage
@@ -227,7 +227,7 @@ export function AffirmationVideoStrip({
           type="button"
           onClick={goPrev}
           aria-label="Previous video"
-          className="absolute top-1/2 left-3 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white/90 backdrop-blur-md transition hover:bg-black/70"
+          className="absolute top-1/2 left-3 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white/90 backdrop-blur-md transition hover:bg-black/70"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
@@ -235,14 +235,14 @@ export function AffirmationVideoStrip({
           type="button"
           onClick={goNext}
           aria-label="Next video"
-          className="absolute top-1/2 right-3 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white/90 backdrop-blur-md transition hover:bg-black/70"
+          className="absolute top-1/2 right-3 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white/90 backdrop-blur-md transition hover:bg-black/70"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
 
         {/* Bottom-Left Cinematic Overlay + Bottom-Right Progress Pills */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-5 bottom-4 flex items-end justify-between gap-4">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-black/85 via-black/45 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-5 bottom-4 z-10 flex items-end justify-between gap-4">
           <div className="min-w-0">
             <div className="font-mono text-[10px] font-semibold uppercase tracking-widest text-amber-300">
               0{activeIdx + 1} · DAILY AFFIRMATION &amp; ENERGY
