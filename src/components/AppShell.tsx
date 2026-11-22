@@ -118,23 +118,44 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <svg
               viewBox="0 0 64 64"
               fill="none"
-              className="h-8 w-8 shrink-0 rounded-xl shadow-xs"
+              className="h-9 w-9 shrink-0 rounded-xl shadow-sm"
               aria-hidden="true"
             >
               <defs>
-                <linearGradient id="blos-nav-bg" x1="6" y1="4" x2="58" y2="60" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#4F46E5" />
-                  <stop offset="50%" stopColor="#6E32F5" />
-                  <stop offset="100%" stopColor="#A855F7" />
+                <linearGradient id="bl-nav-royal-gold" x1="4" y1="4" x2="60" y2="60" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#2E1065" />
+                  <stop offset="52%" stopColor="#6E32F5" />
+                  <stop offset="100%" stopColor="#F59E0B" />
+                </linearGradient>
+                <linearGradient id="bl-nav-gold-rim" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#FDE68A" stopOpacity="0.75" />
+                  <stop offset="50%" stopColor="#DDD6FE" stopOpacity="0.35" />
+                  <stop offset="100%" stopColor="#FBBF24" stopOpacity="0.9" />
+                </linearGradient>
+                <linearGradient id="bl-nav-star-gold" x1="42" y1="9" x2="54" y2="23" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#FEF3C7" />
+                  <stop offset="100%" stopColor="#F59E0B" />
                 </linearGradient>
               </defs>
-              <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#blos-nav-bg)" />
-              <circle cx="32" cy="32" r="19" stroke="white" strokeOpacity="0.25" strokeWidth="1.8" strokeDasharray="4 3" />
+              <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#bl-nav-royal-gold)" />
+              <rect x="3" y="3" width="58" height="58" rx="15" stroke="url(#bl-nav-gold-rim)" strokeWidth="1.6" />
               <path
-                d="M32 13.5C33.4 23.2 40.8 30.6 50.5 32C40.8 33.4 33.4 40.8 32 50.5C30.6 40.8 23.2 33.4 13.5 32C23.2 30.6 30.6 23.2 32 13.5Z"
-                fill="white"
+                d="M48 9.5C48.7 13.7 51.3 16.3 55.5 17C51.3 17.7 48.7 20.3 48 24.5C47.3 20.3 44.7 17.7 40.5 17C44.7 16.3 47.3 13.7 48 9.5Z"
+                fill="url(#bl-nav-star-gold)"
               />
-              <circle cx="46.5" cy="17.5" r="2.8" fill="#FDE68A" />
+              <text
+                x="31"
+                y="42.5"
+                textAnchor="middle"
+                fill="#FFFFFF"
+                fontFamily="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui, sans-serif"
+                fontSize="21"
+                fontWeight="800"
+                letterSpacing="-0.8"
+              >
+                Best
+              </text>
+              <rect x="14" y="48" width="36" height="2.4" rx="1.2" fill="url(#bl-nav-star-gold)" opacity="0.92" />
             </svg>
             <div className="flex items-baseline gap-1.5">
               <span className="text-[15px] font-bold tracking-tight text-[#111118]">BestLucky OS</span>
