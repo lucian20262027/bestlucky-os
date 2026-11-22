@@ -2,7 +2,6 @@
 
 import React, { useMemo, useState } from 'react';
 import {
-  BookOpen,
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
@@ -19,9 +18,14 @@ export interface CalendarEventItem {
   id: string;
   summary: string;
   startISO: string;
+  endISO: string;
   dateISO: string;
   dateLabel: string;
   timeLabel: string;
+  timeRangeLabel: string;
+  startMinutes: number;
+  durationMinutes: number;
+  isAllDay: boolean;
   location?: string;
 }
 
@@ -52,6 +56,38 @@ function buildGoogleCalendarUrl(title: string, dateISO: string, details: string)
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
+function getEventColorClasses(summary: string): string {
+  const s = summary.toLowerCase();
+  if (s.includes('interview') || s.includes('prep')) {
+    return 'bg-[#5C6BC0] text-white border-[#3F51B5]';
+  }
+  if (s.includes('agent') || s.includes('study')) {
+    return 'bg-[#F4511E] text-white border-[#D84315]';
+  }
+  if (s.includes('shadow') || s.includes('speak') || s.includes('lenny')) {
+    return 'bg-[#8E24AA] text-white border-[#6A1B9A]';
+  }
+  if (s.includes('meditation')) {
+    return 'bg-[#C0CA33] text-[#1B1B1F] border-[#9E9D24]';
+  }
+  if (s.includes('black friday') || s.includes('thanksgiving')) {
+    return 'bg-[#0B8043] text-white border-[#096937]';
+  }
+  return 'bg-[#1A73E8] text-white border-[#1557B0]';
+}
+
+function formatHourLabel(hour24: number): string {
+  const h = ((hour24 % 24) + 24) % 24;
+  if (h === 0) return '12 AM';
+  if (h < 12) return `${h} AM`;
+  if (h === 12) return '12 PM';
+  return `${h - 12} PM`;
+}
+
+const WEEK_START_HOUR = 12; // 12 PM SFO (4 AM Beijing)
+const WEEK_END_HOUR = 23; // 11 PM SFO (3 PM Beijing)
+const HOUR_HEIGHT = 44;
+
 export function ScheduleCalendarPanel({
   mounted,
   todayISO,
@@ -65,6 +101,7 @@ export function ScheduleCalendarPanel({
   onAddLoop,
   onRemoveLoop,
 }: ScheduleCalendarPanelProps) {
+  const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
   const [showGcalSetup, setShowGcalSetup] = useState(false);
   const [gcalInput, setGcalInput] = useState(googleCalendarIcsUrl ?? '');
   const [showAddLoop, setShowAddLoop] = useState(false);
@@ -73,25 +110,44 @@ export function ScheduleCalendarPanel({
   const [newRound, setNewRound] = useState('System & Problem Decomposition');
   const [newDate, setNewDate] = useState(todayISO ?? '2026-11-28');
 
-  // Month navigation state (defaults to Nov 2026 or current todayISO month)
+  const [weekOffset, setWeekOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);
-  const [selectedDateISO, setSelectedDateISO] = useState<string | null>(null);
+
+  // Compute current week Sun-Sat
+  const weekDays = useMemo(() => {
+    const ref = todayISO ? new Date(`${todayISO}T00:00:00`) : new Date('2026-11-22T00:00:00');
+    const sunday = new Date(ref);
+    sunday.setDate(ref.getDate() - ref.getDay() + weekOffset * 7);
+
+    return Array.from({ length: 7 }, (_, idx) => {
+      const d = new Date(sunday);
+      d.setDate(sunday.getDate() + idx);
+      return {
+        dateISO: d.toISOString().slice(0, 10),
+        dayShort: d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase(),
+        dayNum: d.getDate(),
+      };
+    });
+  }, [todayISO, weekOffset]);
+
+  const weekHeaderLabel = useMemo(() => {
+    const first = new Date(`${weekDays[0].dateISO}T00:00:00`);
+    return first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }, [weekDays]);
 
   const baseMonthDate = useMemo(() => {
     const ref = todayISO ? new Date(`${todayISO}T00:00:00`) : new Date('2026-11-22T00:00:00');
     return new Date(ref.getFullYear(), ref.getMonth() + monthOffset, 1);
   }, [todayISO, monthOffset]);
 
-  const monthLabel = useMemo(() => {
-    return baseMonthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  }, [baseMonthDate]);
+  const monthLabel = useMemo(
+    () => baseMonthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    [baseMonthDate]
+  );
 
-  // Map dateISO -> events + loops for instant calendar cell rendering
+  // Map dateISO -> events + loops
   const eventsByDate = useMemo(() => {
-    const map: Record<
-      string,
-      { loops: UpcomingLoop[]; gcal: CalendarEventItem[] }
-    > = {};
+    const map: Record<string, { loops: UpcomingLoop[]; gcal: CalendarEventItem[] }> = {};
     upcomingLoops.forEach((loop) => {
       if (!map[loop.dateISO]) map[loop.dateISO] = { loops: [], gcal: [] };
       map[loop.dateISO].loops.push(loop);
@@ -106,16 +162,10 @@ export function ScheduleCalendarPanel({
   const calendarCells = useMemo(() => {
     const year = baseMonthDate.getFullYear();
     const month = baseMonthDate.getMonth();
-    const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+    const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells: Array<{ dateISO: string; dayNum: number; inMonth: boolean }> = [];
 
-    const cells: Array<{
-      dateISO: string;
-      dayNum: number;
-      inMonth: boolean;
-    }> = [];
-
-    // Leading empty/prev-month days
     const prevMonthDays = new Date(year, month, 0).getDate();
     for (let i = firstDay - 1; i >= 0; i--) {
       const d = new Date(year, month - 1, prevMonthDays - i);
@@ -125,8 +175,6 @@ export function ScheduleCalendarPanel({
         inMonth: false,
       });
     }
-
-    // Current month days
     for (let day = 1; day <= daysInMonth; day++) {
       const d = new Date(year, month, day);
       cells.push({
@@ -135,8 +183,6 @@ export function ScheduleCalendarPanel({
         inMonth: true,
       });
     }
-
-    // Trailing days to complete 35 or 42 grid
     const targetLen = cells.length <= 35 ? 35 : 42;
     let nextDay = 1;
     while (cells.length < targetLen) {
@@ -148,11 +194,13 @@ export function ScheduleCalendarPanel({
       });
       nextDay++;
     }
-
     return cells;
   }, [baseMonthDate]);
 
-  const selectedDayData = selectedDateISO ? eventsByDate[selectedDateISO] : null;
+  const hours = useMemo(
+    () => Array.from({ length: WEEK_END_HOUR - WEEK_START_HOUR + 1 }, (_, i) => WEEK_START_HOUR + i),
+    []
+  );
 
   const handleSaveGcal = (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,9 +224,9 @@ export function ScheduleCalendarPanel({
 
   return (
     <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-2xs">
-      {/* Header Bar */}
+      {/* Top Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#F2F2F7] pb-4">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#F3ECFF] text-[#6E32F5]">
             <CalendarIcon className="h-4 w-4" />
           </div>
@@ -187,12 +235,38 @@ export function ScheduleCalendarPanel({
               Schedule &amp; Google Calendar
             </h2>
             <p className="text-[11px] text-[#848494]">
-              原生月历视图 · 实时同步 Google Calendar 日程与面试 Loop
+              原生态双时区日程视图 (Beijing + SFO) · 完整同步重复日程与面试 Loop
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Week / Month Toggle */}
+          <div className="inline-flex rounded-lg border border-[#ECECF2] bg-[#FAFAFC] p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode('week')}
+              className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
+                viewMode === 'week'
+                  ? 'bg-white text-[#6E32F5] shadow-2xs'
+                  : 'text-[#5E5E6E] hover:text-[#111118]'
+              }`}
+            >
+              Week
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('month')}
+              className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
+                viewMode === 'month'
+                  ? 'bg-white text-[#6E32F5] shadow-2xs'
+                  : 'text-[#5E5E6E] hover:text-[#111118]'
+              }`}
+            >
+              Month
+            </button>
+          </div>
+
           {googleCalendarIcsUrl && (
             <button
               type="button"
@@ -224,28 +298,29 @@ export function ScheduleCalendarPanel({
         </div>
       </div>
 
-      {/* Optional GCal Setup / Add Loop Forms */}
+      {/* GCal Setup Form (Supports multiple .ics URLs!) */}
       {showGcalSetup && (
         <form
           onSubmit={handleSaveGcal}
           className="mt-4 space-y-2 rounded-xl border border-[#6E32F5]/25 bg-[#F9F6FF] p-3.5"
         >
           <div className="text-xs font-semibold text-[#111118]">
-            Google Calendar iCal (.ics) 同步设置
+            Google Calendar iCal (.ics) 多日历同步设置
           </div>
           <p className="text-[11px] leading-relaxed text-[#5E5E6E]">
-            在 Google Calendar 网页端 → 设置 → 你的日历 → Integrate calendar → 复制{' '}
+            如果你在 Google Calendar 有多个日历（例如 <code>Lucian Wang</code> +{' '}
+            <code>chenniwan365@gmail.com</code>），可以每行粘贴一个{' '}
             <span className="font-medium text-[#111118]">Secret address in iCal format</span>{' '}
-            粘贴到下方：
+            链接，系统会自动合并所有重复日程：
           </p>
-          <div className="flex flex-wrap gap-2">
-            <input
-              type="url"
-              value={gcalInput}
-              onChange={(e) => setGcalInput(e.target.value)}
-              placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
-              className="min-w-[240px] flex-1 rounded-lg border border-[#ECECF2] bg-white px-3 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
-            />
+          <textarea
+            rows={2}
+            value={gcalInput}
+            onChange={(e) => setGcalInput(e.target.value)}
+            placeholder="https://calendar.google.com/calendar/ical/.../basic.ics (多个日历可换行输入)"
+            className="w-full rounded-lg border border-[#ECECF2] bg-white px-3 py-2 text-xs focus:border-[#6E32F5] focus:outline-none"
+          />
+          <div className="flex justify-end gap-2">
             <button
               type="button"
               onClick={() => setShowGcalSetup(false)}
@@ -324,19 +399,182 @@ export function ScheduleCalendarPanel({
         <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{gcalError}</p>
       )}
 
-      {/* Full-Width Split: Native Month Calendar (7 cols) + Agenda & Loops (5 cols) */}
-      <div className="mt-4 grid gap-5 lg:grid-cols-12">
-        {/* Left: Native-Style Monthly Calendar Grid */}
-        <div className="rounded-xl border border-[#EFEFF5] bg-[#FAFAFC]/70 p-3.5 lg:col-span-7">
+      {/* VIEW 1: Native Google Calendar Weekly Time-Grid */}
+      {viewMode === 'week' && (
+        <div className="mt-4 overflow-x-auto">
+          <div className="min-w-[740px]">
+            {/* Week Nav */}
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWeekOffset(0)}
+                  className="rounded-full border border-[#ECECF2] bg-white px-3 py-1 text-xs font-medium text-[#111118] hover:bg-[#FAFAFC]"
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWeekOffset((v) => v - 1)}
+                  className="rounded-full border border-[#ECECF2] bg-white p-1.5 text-[#5E5E6E] hover:text-[#111118]"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWeekOffset((v) => v + 1)}
+                  className="rounded-full border border-[#ECECF2] bg-white p-1.5 text-[#5E5E6E] hover:text-[#111118]"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+                <span className="ml-1 text-base font-semibold text-[#111118]">
+                  {weekHeaderLabel}
+                </span>
+              </div>
+              <span className="text-[11px] text-[#848494]">
+                {gcalEvents.length > 0
+                  ? `已同步 ${gcalEvents.length} 条 Google 日历日程`
+                  : '点击 Connect GCal 接入你的 Google 日历'}
+              </span>
+            </div>
+
+            {/* Day Headers + All-Day Row */}
+            <div className="grid grid-cols-[76px_repeat(7,minmax(0,1fr))] border-b border-[#ECECF2] pb-2">
+              <div className="flex items-end justify-between pr-2 text-[10px] font-semibold uppercase text-[#848494]">
+                <span>BJ</span>
+                <span>SFO</span>
+              </div>
+              {weekDays.map((wd) => {
+                const isToday = mounted && todayISO === wd.dateISO;
+                const dayData = eventsByDate[wd.dateISO];
+                const allDayEvents = dayData?.gcal.filter((e) => e.isAllDay) ?? [];
+                const dayLoops = dayData?.loops ?? [];
+
+                return (
+                  <div key={wd.dateISO} className="px-1 text-center">
+                    <div
+                      className={`text-[10px] font-semibold ${
+                        isToday ? 'text-[#6E32F5]' : 'text-[#848494]'
+                      }`}
+                    >
+                      {wd.dayShort}
+                    </div>
+                    <div
+                      className={`mx-auto mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${
+                        isToday ? 'bg-[#6E32F5] text-white' : 'text-[#111118]'
+                      }`}
+                    >
+                      {wd.dayNum}
+                    </div>
+                    {/* All-day + Loop badges */}
+                    <div className="mt-1 space-y-0.5 text-left">
+                      {dayLoops.map((lp) => (
+                        <div
+                          key={lp.id}
+                          className="truncate rounded bg-[#F3ECFF] px-1.5 py-0.5 text-[10px] font-semibold text-[#6E32F5]"
+                          title={`${lp.company} · ${lp.round}`}
+                        >
+                          {lp.company}
+                        </div>
+                      ))}
+                      {allDayEvents.slice(0, 2).map((ev) => (
+                        <div
+                          key={ev.id}
+                          className={`truncate rounded px-1.5 py-0.5 text-[10px] font-medium ${getEventColorClasses(
+                            ev.summary
+                          )}`}
+                          title={ev.summary}
+                        >
+                          {ev.summary}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Hourly Time Grid (12 PM – 11 PM SFO / 4 AM – 3 PM Beijing) */}
+            <div className="relative mt-1 grid grid-cols-[76px_repeat(7,minmax(0,1fr))]">
+              {/* Dual Timezone Gutter */}
+              <div>
+                {hours.map((h) => (
+                  <div
+                    key={h}
+                    style={{ height: `${HOUR_HEIGHT}px` }}
+                    className="flex items-start justify-between pr-2 text-[10px] text-[#848494]"
+                  >
+                    <span className="-mt-1.5">{formatHourLabel(h + 16)}</span>
+                    <span className="-mt-1.5 font-medium text-[#5E5E6E]">
+                      {formatHourLabel(h)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* 7 Day Columns */}
+              {weekDays.map((wd) => {
+                const timedEvents =
+                  eventsByDate[wd.dateISO]?.gcal.filter(
+                    (e) =>
+                      !e.isAllDay &&
+                      e.startMinutes >= WEEK_START_HOUR * 60 &&
+                      e.startMinutes <= (WEEK_END_HOUR + 1) * 60
+                  ) ?? [];
+
+                return (
+                  <div
+                    key={wd.dateISO}
+                    className="relative border-l border-[#F0F0F5]"
+                    style={{ height: `${hours.length * HOUR_HEIGHT}px` }}
+                  >
+                    {/* Hour horizontal lines */}
+                    {hours.map((h) => (
+                      <div
+                        key={h}
+                        style={{ height: `${HOUR_HEIGHT}px` }}
+                        className="border-b border-[#F5F5F9]"
+                      />
+                    ))}
+
+                    {/* Timed Event Blocks */}
+                    {timedEvents.map((ev) => {
+                      const topPx = ((ev.startMinutes - WEEK_START_HOUR * 60) / 60) * HOUR_HEIGHT;
+                      const heightPx = Math.max(
+                        24,
+                        (ev.durationMinutes / 60) * HOUR_HEIGHT - 2
+                      );
+                      return (
+                        <div
+                          key={ev.id}
+                          style={{ top: `${topPx}px`, height: `${heightPx}px` }}
+                          className={`absolute inset-x-0.5 overflow-hidden rounded-md border-l-2 px-1.5 py-0.5 text-[10px] leading-tight shadow-2xs ${getEventColorClasses(
+                            ev.summary
+                          )}`}
+                          title={`${ev.summary} (${ev.timeRangeLabel})`}
+                        >
+                          <div className="truncate font-semibold">{ev.summary}</div>
+                          <div className="truncate opacity-90">{ev.timeRangeLabel}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW 2: Monthly Calendar Grid */}
+      {viewMode === 'month' && (
+        <div className="mt-4 rounded-xl border border-[#EFEFF5] bg-[#FAFAFC]/70 p-3.5">
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-semibold text-[#111118]">{monthLabel}</div>
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => {
-                  setMonthOffset(0);
-                  setSelectedDateISO(todayISO);
-                }}
+                onClick={() => setMonthOffset(0)}
                 className="rounded-lg border border-[#ECECF2] bg-white px-2 py-1 text-[11px] font-medium text-[#5E5E6E] hover:text-[#111118]"
               >
                 Today
@@ -345,7 +583,6 @@ export function ScheduleCalendarPanel({
                 type="button"
                 onClick={() => setMonthOffset((v) => v - 1)}
                 className="rounded-lg border border-[#ECECF2] bg-white p-1 text-[#5E5E6E] hover:text-[#111118]"
-                aria-label="Previous month"
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
               </button>
@@ -353,7 +590,6 @@ export function ScheduleCalendarPanel({
                 type="button"
                 onClick={() => setMonthOffset((v) => v + 1)}
                 className="rounded-lg border border-[#ECECF2] bg-white p-1 text-[#5E5E6E] hover:text-[#111118]"
-                aria-label="Next month"
               >
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>
@@ -374,23 +610,16 @@ export function ScheduleCalendarPanel({
               const loopCount = dayItems?.loops.length ?? 0;
               const gcalCount = dayItems?.gcal.length ?? 0;
               const isToday = mounted && todayISO === cell.dateISO;
-              const isSelected = selectedDateISO === cell.dateISO;
 
               return (
-                <button
+                <div
                   key={cell.dateISO}
-                  type="button"
-                  onClick={() =>
-                    setSelectedDateISO((prev) => (prev === cell.dateISO ? null : cell.dateISO))
-                  }
-                  className={`flex min-h-[54px] flex-col items-start justify-between rounded-lg border p-1.5 text-left transition ${
-                    isSelected
-                      ? 'border-[#6E32F5] bg-[#F3ECFF]/70'
-                      : isToday
-                        ? 'border-[#6E32F5]/50 bg-white'
-                        : cell.inMonth
-                          ? 'border-[#EFEFF5] bg-white hover:border-[#D4C5FD]'
-                          : 'border-transparent bg-transparent text-[#B4B4C2]'
+                  className={`flex min-h-[68px] flex-col justify-between rounded-lg border p-1.5 ${
+                    isToday
+                      ? 'border-[#6E32F5] bg-[#F3ECFF]/40'
+                      : cell.inMonth
+                        ? 'border-[#EFEFF5] bg-white'
+                        : 'border-transparent bg-transparent text-[#B4B4C2]'
                   }`}
                 >
                   <span
@@ -406,7 +635,7 @@ export function ScheduleCalendarPanel({
                   </span>
 
                   {(loopCount > 0 || gcalCount > 0) && (
-                    <div className="w-full space-y-0.5">
+                    <div className="mt-1 space-y-0.5">
                       {dayItems?.loops.slice(0, 1).map((lp) => (
                         <div
                           key={lp.id}
@@ -415,169 +644,78 @@ export function ScheduleCalendarPanel({
                           {lp.company}
                         </div>
                       ))}
-                      {dayItems?.gcal.slice(0, 1).map((ev) => (
+                      {dayItems?.gcal.slice(0, 2).map((ev) => (
                         <div
                           key={ev.id}
-                          className="truncate rounded bg-emerald-50 px-1 py-0.5 text-[9px] font-medium text-emerald-700"
+                          className={`truncate rounded px-1 py-0.5 text-[9px] font-medium ${getEventColorClasses(
+                            ev.summary
+                          )}`}
                         >
                           {ev.summary}
                         </div>
                       ))}
-                      {loopCount + gcalCount > 2 && (
+                      {loopCount + gcalCount > 3 && (
                         <div className="px-0.5 text-[9px] font-medium text-[#848494]">
-                          +{loopCount + gcalCount - 2} more
+                          +{loopCount + gcalCount - 3} more
                         </div>
                       )}
                     </div>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
         </div>
+      )}
 
-        {/* Right: Agenda Stream (Selected Day or Upcoming GCal + Loops) */}
-        <div className="flex flex-col justify-between space-y-4 lg:col-span-5">
-          {selectedDateISO ? (
-            <div className="rounded-xl border border-[#6E32F5]/25 bg-[#F9F6FF] p-3.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#6E32F5]">
-                  {selectedDateISO} 日程详情
+      {/* Compact Upcoming Interview Loops Strip */}
+      <div className="mt-4 grid gap-2.5 border-t border-[#F2F2F7] pt-3.5 sm:grid-cols-3">
+        {upcomingLoops.map((loop) => {
+          const days = mounted ? daysUntil(loop.dateISO, todayISO) : null;
+          const gcalLink = buildGoogleCalendarUrl(
+            `${loop.company} Interview — ${ROLES_BY_ID[loop.role]?.shortLabel ?? loop.role}`,
+            loop.dateISO,
+            `${loop.round}\n${loop.notes ?? ''}`
+          );
+          return (
+            <div
+              key={loop.id}
+              className="group flex items-center justify-between gap-2 rounded-xl border border-[#EFEFF5] bg-[#FAFAFC] px-3 py-2 text-xs transition hover:border-[#6E32F5]/30 hover:bg-white"
+            >
+              <div className="min-w-0">
+                <div className="truncate font-semibold text-[#111118]">
+                  {loop.company}{' '}
+                  <span className="font-normal text-[#848494]">
+                    · {ROLES_BY_ID[loop.role]?.shortLabel}
+                  </span>
+                </div>
+                <div className="truncate text-[11px] text-[#5E5E6E]">{loop.round}</div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span className="font-mono text-[11px] font-semibold text-[#6E32F5]" suppressHydrationWarning>
+                  {days !== null ? (days >= 0 ? `T-${days}d` : 'Done') : loop.dateISO}
                 </span>
+                <a
+                  href={gcalLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[#6E32F5] hover:opacity-80"
+                  title="Add to Google Calendar"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </a>
                 <button
                   type="button"
-                  onClick={() => setSelectedDateISO(null)}
-                  className="text-[11px] font-medium text-[#5E5E6E] hover:underline"
+                  onClick={() => onRemoveLoop(loop.id)}
+                  className="text-[#C2C2D0] opacity-0 transition hover:text-rose-600 group-hover:opacity-100"
+                  title="Remove loop"
                 >
-                  查看全部
+                  <Trash2 className="h-3 w-3" />
                 </button>
               </div>
-              {!selectedDayData ||
-              (selectedDayData.loops.length === 0 && selectedDayData.gcal.length === 0) ? (
-                <p className="mt-2 text-xs text-[#5E5E6E]">这一天暂无面试或日历日程。</p>
-              ) : (
-                <div className="mt-2.5 space-y-2">
-                  {selectedDayData.loops.map((lp) => (
-                    <div key={lp.id} className="rounded-lg bg-white p-2.5 text-xs shadow-2xs">
-                      <div className="font-semibold text-[#111118]">
-                        {lp.company} · {ROLES_BY_ID[lp.role]?.shortLabel}
-                      </div>
-                      <div className="text-[11px] text-[#5E5E6E]">{lp.round}</div>
-                    </div>
-                  ))}
-                  {selectedDayData.gcal.map((ev) => (
-                    <div
-                      key={ev.id}
-                      className="rounded-lg border border-emerald-200 bg-white p-2.5 text-xs"
-                    >
-                      <div className="font-semibold text-[#111118]">{ev.summary}</div>
-                      <div className="text-[11px] text-emerald-700">
-                        Google Calendar · {ev.timeLabel}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
-          ) : (
-            <>
-              {/* Google Calendar Live Events */}
-              {googleCalendarIcsUrl && (
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
-                      Google Calendar ({gcalEvents.length})
-                    </span>
-                  </div>
-                  <div className="max-h-44 space-y-1.5 overflow-y-auto pr-1">
-                    {gcalEvents.length === 0 && !gcalLoading ? (
-                      <p className="text-xs text-[#848494]">近期暂无日历日程。</p>
-                    ) : (
-                      gcalEvents.slice(0, 6).map((ev) => (
-                        <div
-                          key={ev.id}
-                          className="flex items-center justify-between gap-2 rounded-xl border border-emerald-200/70 bg-emerald-50/35 px-3 py-2 text-xs"
-                        >
-                          <div className="min-w-0">
-                            <div className="truncate font-semibold text-[#111118]">
-                              {ev.summary}
-                            </div>
-                            <div className="text-[11px] text-[#5E5E6E]">
-                              {ev.dateLabel} · {ev.timeLabel}
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Upcoming Interview Loops */}
-              <div>
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#848494]">
-                  Upcoming Interview Loops ({upcomingLoops.length})
-                </div>
-                <div className="space-y-2">
-                  {upcomingLoops.map((loop) => {
-                    const days = mounted ? daysUntil(loop.dateISO, todayISO) : null;
-                    const gcalLink = buildGoogleCalendarUrl(
-                      `${loop.company} Interview — ${ROLES_BY_ID[loop.role]?.shortLabel ?? loop.role}`,
-                      loop.dateISO,
-                      `${loop.round}\n${loop.notes ?? ''}`
-                    );
-                    return (
-                      <div
-                        key={loop.id}
-                        className="group flex items-center justify-between gap-2 rounded-xl border border-[#EFEFF5] bg-[#FAFAFC] px-3 py-2.5 transition hover:border-[#6E32F5]/30 hover:bg-white"
-                      >
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          <BookOpen className="h-3.5 w-3.5 shrink-0 text-[#6E32F5]" />
-                          <div className="min-w-0">
-                            <div className="truncate text-xs font-semibold text-[#111118]">
-                              {loop.company}{' '}
-                              <span className="font-normal text-[#848494]">
-                                · {ROLES_BY_ID[loop.role]?.shortLabel}
-                              </span>
-                            </div>
-                            <div className="truncate text-[11px] text-[#5E5E6E]">{loop.round}</div>
-                          </div>
-                        </div>
-
-                        <div className="flex shrink-0 items-center gap-2">
-                          <span
-                            className="font-mono text-[11px] font-semibold text-[#6E32F5]"
-                            suppressHydrationWarning
-                          >
-                            {days !== null ? (days >= 0 ? `T-${days}d` : 'Done') : loop.dateISO}
-                          </span>
-                          <a
-                            href={gcalLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-0.5 text-[11px] font-medium text-[#6E32F5] hover:underline"
-                            title="Add to Google Calendar"
-                          >
-                            GCal
-                            <ExternalLink className="h-2.5 w-2.5" />
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => onRemoveLoop(loop.id)}
-                            className="rounded p-0.5 text-[#C2C2D0] opacity-0 transition hover:text-rose-600 group-hover:opacity-100"
-                            title="Remove loop"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+          );
+        })}
       </div>
     </section>
   );
