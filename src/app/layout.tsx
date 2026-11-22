@@ -5,7 +5,7 @@ import { AppProvider } from '@/components/AppProvider';
 import { AppShell } from '@/components/AppShell';
 
 export const metadata: Metadata = {
-  title: 'LoopOS — Personal Interview Workbench (FDE · FDPM · AI PM · PM · Ops · PgM · Consulting)',
+  title: 'BestLucky OS — Personal Interview Workbench (FDE · FDPM · AI PM · PM · Ops · PgM · Consulting)',
   description:
     'High-signal personal interview prep studio with JD customizer, 7-role question & answer studio, video library, Lark one-click sync, STAR+L story bank, and Gemini 4 rubric scoring.',
 };

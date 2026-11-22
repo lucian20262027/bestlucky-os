@@ -114,12 +114,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Aced-style Brand Header */}
         <div className="flex items-center justify-between px-1.5 pb-4">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#6E32F5] text-white shadow-xs">
-              <Sparkles className="h-4 w-4" />
-            </div>
+            <svg
+              viewBox="0 0 64 64"
+              fill="none"
+              className="h-8 w-8 shrink-0 rounded-xl shadow-xs"
+              aria-hidden="true"
+            >
+              <defs>
+                <linearGradient id="blos-nav-bg" x1="6" y1="4" x2="58" y2="60" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#4F46E5" />
+                  <stop offset="50%" stopColor="#6E32F5" />
+                  <stop offset="100%" stopColor="#A855F7" />
+                </linearGradient>
+              </defs>
+              <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#blos-nav-bg)" />
+              <circle cx="32" cy="32" r="19" stroke="white" strokeOpacity="0.25" strokeWidth="1.8" strokeDasharray="4 3" />
+              <path
+                d="M32 13.5C33.4 23.2 40.8 30.6 50.5 32C40.8 33.4 33.4 40.8 32 50.5C30.6 40.8 23.2 33.4 13.5 32C23.2 30.6 30.6 23.2 32 13.5Z"
+                fill="white"
+              />
+              <circle cx="46.5" cy="17.5" r="2.8" fill="#FDE68A" />
+            </svg>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-[15px] font-bold tracking-tight text-[#111118]">LoopOS</span>
-              <span className="text-[11px] font-medium text-[#848494]">personal</span>
+              <span className="text-[15px] font-bold tracking-tight text-[#111118]">BestLucky OS</span>
+              <span className="rounded-md bg-[#F3ECFF] px-1.5 py-0.5 text-[10px] font-semibold text-[#6E32F5]">
+                pro
+              </span>
             </div>
           </Link>
           <button
@@ -469,7 +489,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className="inline-flex items-center gap-2 rounded-lg border border-[#ECECF2] px-2.5 py-1.5 text-xs font-medium text-[#111118]"
           >
             <Menu className="h-4 w-4" />
-            LoopOS
+            BestLucky OS
           </button>
           <button
             type="button"
