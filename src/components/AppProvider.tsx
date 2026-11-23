@@ -13,6 +13,7 @@ import {
   AISettings,
   AppState,
   CourseSyllabus,
+  CourseTrackId,
   CustomLoopPlan,
   InterviewQuestion,
   JobApplication,
@@ -54,9 +55,9 @@ interface AppContextValue {
   updateCustomQuestion: (question: InterviewQuestion) => void;
   deleteCustomQuestion: (id: string) => void;
   updateQuestionNotes: (questionId: string, patch: Partial<QuestionUserNotes>) => void;
-  updateCourseSyllabus: (role: RoleTrack, syllabus: CourseSyllabus) => void;
+  updateCourseSyllabus: (role: CourseTrackId, syllabus: CourseSyllabus) => void;
   toggleCourseLessonComplete: (
-    role: RoleTrack,
+    role: CourseTrackId,
     moduleId: string,
     subSectionId: string,
     lessonId: string
@@ -350,7 +351,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateCourseSyllabus = useCallback(
-    (role: RoleTrack, syllabus: CourseSyllabus) => {
+    (role: CourseTrackId, syllabus: CourseSyllabus) => {
       commit((prev) => ({
         ...prev,
         courses: {
@@ -366,7 +367,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const toggleCourseLessonComplete = useCallback(
-    (role: RoleTrack, moduleId: string, subSectionId: string, lessonId: string) => {
+    (role: CourseTrackId, moduleId: string, subSectionId: string, lessonId: string) => {
       commit((prev) => {
         const course = prev.courses[role];
         if (!course) return prev;

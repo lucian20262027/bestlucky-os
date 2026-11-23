@@ -7,6 +7,8 @@ export type RoleTrack =
   | 'pgm'
   | 'consulting';
 
+export type CourseTrackId = RoleTrack | 'self-intro';
+
 export type RoundType =
   | 'phone-screen'
   | 'hiring-manager'
@@ -273,7 +275,7 @@ export interface CourseModuleSection {
 }
 
 export interface CourseSyllabus {
-  role: RoleTrack;
+  role: CourseTrackId;
   editionBadge: string;
   heroTitle: string;
   heroTitleStyle: TextStyleConfig;
@@ -462,7 +464,7 @@ export interface AppState {
   questionNotes: Record<string, QuestionUserNotes>;
   libraryItems: LibraryItem[];
   larkSettings: LarkSettings;
-  courses: Record<RoleTrack, CourseSyllabus>;
+  courses: Record<CourseTrackId, CourseSyllabus>;
   userGoals: UserGoals;
   practiceDatesISO: string[];
   sessions: PracticeSession[];

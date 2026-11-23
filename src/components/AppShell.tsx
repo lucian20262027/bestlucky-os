@@ -480,6 +480,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       </Link>
                     );
                   })}
+                  {flyout === 'courses' && (
+                    <Link
+                      href="/courses/self-intro"
+                      onClick={() => setFlyout(null)}
+                      className="flex items-center justify-between rounded-xl px-2.5 py-2 text-[13px] font-medium text-[#2E2E3A] transition hover:bg-[#F3ECFF] hover:text-[#6E32F5]"
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <Sparkles className="h-4 w-4 text-[#6E32F5]" />
+                        <span>Self Intro &amp; Company Culture Fit</span>
+                      </span>
+                      <span className="rounded-full bg-[#F3ECFF] px-2 py-0.5 text-[10px] font-semibold text-[#6E32F5]">
+                        2026
+                      </span>
+                    </Link>
+                  )}
                 </div>
                 <div className="mt-2 border-t border-[#ECECF2] pt-2">
                   <Link

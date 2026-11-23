@@ -103,7 +103,7 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
                       {c.heroTitle}
                     </span>
                     <span className="text-[11px] text-[var(--ink-muted)]">
-                      {ROLES_BY_ID[c.role].shortLabel}
+                      {c.role === 'self-intro' ? 'Self Intro & Culture' : ROLES_BY_ID[c.role].shortLabel}
                     </span>
                   </Link>
                 ))}

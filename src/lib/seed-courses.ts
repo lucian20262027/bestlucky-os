@@ -5,7 +5,15 @@ import {
   DEFAULT_MODULE_STYLE,
   DEFAULT_SUBSECTION_STYLE,
 } from './typography';
-import { CourseSyllabus, RoleTrack } from './types';
+import { CourseSyllabus, CourseTrackId, RoleTrack } from './types';
+
+export const SELF_INTRO_COURSE_META = {
+  id: 'self-intro' as const,
+  shortLabel: 'Self Intro & Culture',
+  label: 'Self Intro & Company Culture Fit',
+  tagline:
+    '60s / 2-min elevator pitch, career arc narrative, Why This Company & Bar-Raiser culture fit loops.',
+};
 
 function buildSyllabusForRole(
   role: RoleTrack,
@@ -76,7 +84,7 @@ function buildSyllabusForRole(
   };
 }
 
-export const SEED_COURSES: Record<RoleTrack, CourseSyllabus> = {
+export const SEED_COURSES: Record<CourseTrackId, CourseSyllabus> = {
   fde: buildSyllabusForRole(
     'fde',
     'Forward Deployed Engineer Prep',
@@ -490,4 +498,113 @@ export const SEED_COURSES: Record<RoleTrack, CourseSyllabus> = {
       },
     ]
   ),
+  'self-intro': {
+    role: 'self-intro',
+    editionBadge: '2026 EDITION',
+    heroTitle: 'Self Intro & Company Culture Fit',
+    heroTitleStyle: DEFAULT_HERO_STYLE,
+    heroSubtitle:
+      'Craft a high-conviction 60s & 2-min self-introduction, connect your career arc to frontier AI roles, and nail Why This Company & Culture Fit / Bar-Raiser rounds. Click Edit Page anytime to customize your scripts & videos.',
+    highlights: [
+      '60-second & 2-minute modular self-intro templates (Present → Past → Future)',
+      'Company-specific "Why Us" & Culture Fit alignment (Anthropic, OpenAI, Palantir, Stripe)',
+      'Fully editable modules, scripts, Q&A blocks & video walkthroughs',
+      'Bar-Raiser behavioral & leadership principles calibration',
+    ],
+    modules: [
+      {
+        id: 'self-intro-mod-1',
+        title: 'Module 1 · 60s & 2-Min Self Intro Narrative',
+        description:
+          'Lead with your strongest 0→1 AI / enterprise delivery identity, anchor 2–3 quantified proof points, and bridge directly to the target role.',
+        titleStyle: DEFAULT_MODULE_STYLE,
+        subSections: [
+          {
+            id: 'self-intro-mod-1-overview',
+            title: 'Overview & Frameworks',
+            titleStyle: DEFAULT_SUBSECTION_STYLE,
+            lessons: [
+              {
+                id: 'self-intro-m1-ov-1',
+                title: 'Present → Past → Future: 90-Second Executive Pitch Blueprint',
+                kind: 'lesson',
+                summary:
+                  'Hook in 15s with your builder identity, prove with 2 shipped metrics, close with why this exact team.',
+                completed: false,
+                published: true,
+              },
+              {
+                id: 'self-intro-m1-ov-2',
+                title: 'Adapting One Career Arc Across FDE, FDPM & AI PM Loops',
+                kind: 'lesson',
+                summary:
+                  'Dialing technical depth vs. customer discovery & ROI framing depending on interviewer persona.',
+                completed: false,
+                published: true,
+              },
+            ],
+          },
+          {
+            id: 'self-intro-mod-1-practice',
+            title: 'Mock Interviews & Practice Questions',
+            titleStyle: DEFAULT_SUBSECTION_STYLE,
+            lessons: [
+              {
+                id: 'self-intro-m1-q-1',
+                title: '"Tell me about yourself" — 2-Minute High-Impact Pitch',
+                kind: 'lesson',
+                summary:
+                  'Click Edit Page to paste your own tailored script, bullet points, or upload a practice recording.',
+                completed: false,
+                published: true,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'self-intro-mod-2',
+        title: 'Module 2 · Company Culture Fit & "Why This Company"',
+        description:
+          'Connect genuine product/mission conviction with the company’s operating cadence, safety ethos, and engineering velocity.',
+        titleStyle: DEFAULT_MODULE_STYLE,
+        subSections: [
+          {
+            id: 'self-intro-mod-2-overview',
+            title: 'Overview & Frameworks',
+            titleStyle: DEFAULT_SUBSECTION_STYLE,
+            lessons: [
+              {
+                id: 'self-intro-m2-ov-1',
+                title: '3-Layer "Why Us": Mission × Technical Wedge × Personal Fit',
+                kind: 'lesson',
+                summary:
+                  'Avoid generic flattery; cite a specific product trade-off, customer segment, or engineering blog insight.',
+                completed: false,
+                published: true,
+              },
+            ],
+          },
+          {
+            id: 'self-intro-mod-2-practice',
+            title: 'Mock Interviews & Practice Questions',
+            titleStyle: DEFAULT_SUBSECTION_STYLE,
+            lessons: [
+              {
+                id: 'self-intro-m2-q-1',
+                title: 'Culture Fit & Ambiguity: Working Under High Ownership & Rapid Iteration',
+                kind: 'lesson',
+                summary:
+                  'Click Edit Page to add company-specific notes (Anthropic / OpenAI / Palantir / Stripe) and mock answers.',
+                completed: false,
+                published: true,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    published: true,
+    updatedAt: '2026-11-22T00:00:00Z',
+  },
 };

@@ -29,6 +29,7 @@ import { VideoPlayer } from '@/components/VideoPlayer';
 import { roleBadgeClasses } from '@/lib/helpers';
 import { saveLocalMedia } from '@/lib/media-db';
 import { ROLES_BY_ID } from '@/lib/roles';
+import { SELF_INTRO_COURSE_META } from '@/lib/seed-courses';
 import {
   DEFAULT_MODULE_STYLE,
   DEFAULT_SUBSECTION_STYLE,
@@ -40,6 +41,7 @@ import {
   CourseModuleSection,
   CourseSubSection,
   CourseSyllabus,
+  CourseTrackId,
   InterviewQuestion,
   RoleTrack,
 } from '@/lib/types';
@@ -47,7 +49,13 @@ import {
 function CourseSyllabusContent() {
   const params = useParams<{ role: string }>();
   const rawRole = typeof params?.role === 'string' ? params.role : 'fde';
-  const role: RoleTrack = ROLES_BY_ID[rawRole as RoleTrack] ? (rawRole as RoleTrack) : 'fde';
+  const role: CourseTrackId =
+    rawRole === 'self-intro'
+      ? 'self-intro'
+      : ROLES_BY_ID[rawRole as RoleTrack]
+        ? (rawRole as RoleTrack)
+        : 'fde';
+  const questionDefaultRole: RoleTrack = role === 'self-intro' ? 'fde' : role;
 
   const {
     state,
@@ -77,7 +85,19 @@ function CourseSyllabusContent() {
   const [uploadingIntro, setUploadingIntro] = useState(false);
 
   const course = state.courses[role];
-  const roleCfg = ROLES_BY_ID[role];
+  const roleCfg =
+    role === 'self-intro'
+      ? {
+          id: 'self-intro' as const,
+          shortLabel: SELF_INTRO_COURSE_META.shortLabel,
+          label: SELF_INTRO_COURSE_META.label,
+          defaultScratchpadSections: [
+            'Present: Current Builder Identity (15s)',
+            'Past: 2 Quantified Proof Points (45s)',
+            'Future: Why This Company & Team (30s)',
+          ],
+        }
+      : ROLES_BY_ID[role];
 
   const stats = useMemo(() => {
     if (!course) return { total: 0, done: 0, pct: 0, videos: 0 };
@@ -210,7 +230,7 @@ function CourseSyllabusContent() {
 
     const createdQ: InterviewQuestion = {
       id: qId,
-      role,
+      role: questionDefaultRole,
       secondaryRoles: [],
       round: 'decomposition',
       difficulty: 'senior',

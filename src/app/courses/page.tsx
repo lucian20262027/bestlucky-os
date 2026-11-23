@@ -6,6 +6,8 @@ import { ArrowRight, BookOpen, CheckCircle2, Play, Sparkles, Video } from 'lucid
 import { useApp } from '@/components/AppProvider';
 import { roleBadgeClasses } from '@/lib/helpers';
 import { ROLE_LIST } from '@/lib/roles';
+import { SELF_INTRO_COURSE_META } from '@/lib/seed-courses';
+import { CourseTrackId } from '@/lib/types';
 
 export default function CoursesDirectoryPage() {
   const { state } = useApp();
@@ -16,19 +18,34 @@ export default function CoursesDirectoryPage() {
         <div>
           <div className="inline-flex items-center gap-1.5 rounded-full bg-[#F3ECFF] px-3 py-1 text-[11px] font-semibold text-[#6E32F5]">
             <Sparkles className="h-3.5 w-3.5" />
-            2026 PERSONAL CURRICULUM · 7 TRACKS
+            2026 PERSONAL CURRICULUM · 8 TRACKS
           </div>
           <h1 className="mt-2.5 text-2xl font-bold tracking-tight text-[#111118] sm:text-3xl">
             Interview Courses &amp; Structured Guides
           </h1>
           <p className="mt-1 text-sm text-[#525260]">
-            每个岗位都拆好了大标题（Modules）和小节（Sub-Sections），支持随时点 <strong>Edit Page</strong> 自定义添加题目、文字答案、视频与调整字体字号后发布。
+            每个岗位及 Self Intro &amp; Culture Fit 都拆好了大标题（Modules）和小节（Sub-Sections），支持随时点 <strong>Edit Page</strong> 自定义添加题目、文字答案、视频与调整字体字号后发布。
           </p>
         </div>
       </div>
 
       <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-        {ROLE_LIST.map((role) => {
+        {[
+          ...ROLE_LIST.map((r) => ({
+            id: r.id as CourseTrackId,
+            shortLabel: r.shortLabel,
+            label: r.label,
+            tagline: r.tagline,
+            badgeClass: roleBadgeClasses(r.id),
+          })),
+          {
+            id: SELF_INTRO_COURSE_META.id as CourseTrackId,
+            shortLabel: SELF_INTRO_COURSE_META.shortLabel,
+            label: SELF_INTRO_COURSE_META.label,
+            tagline: SELF_INTRO_COURSE_META.tagline,
+            badgeClass: 'bg-[#F3ECFF] text-[#6E32F5] border border-[#D4C5FD]',
+          },
+        ].map((role) => {
           const course = state.courses[role.id];
           let totalLessons = 0;
           let videoCount = 0;
@@ -52,9 +69,7 @@ export default function CoursesDirectoryPage() {
               <div>
                 <div className="flex items-center justify-between gap-2">
                   <span
-                    className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${roleBadgeClasses(
-                      role.id
-                    )}`}
+                    className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${role.badgeClass}`}
                   >
                     {role.shortLabel}
                   </span>
