@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BrandChimeLogo } from '@/components/BrandChimeLogo';
+import { HeroMantraModal } from '@/components/HeroMantraModal';
 import {
   ArrowRight,
   BookMarked,
@@ -51,6 +52,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { state, mounted, syncStatus, setSettingsOpen } = useApp();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [heroMantraOpen, setHeroMantraOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [flyout, setFlyout] = useState<'courses' | 'questions' | 'stories' | null>(null);
   const closeTimerRef = useRef<number | null>(null);
@@ -252,21 +254,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Bottom Profile & Settings Bar */}
-      <div className="mt-3 space-y-2 border-t border-[#ECECF2] pt-3">
-        <button
-          type="button"
-          onClick={() => setSettingsOpen(true)}
-          className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-left transition hover:bg-[#F6F5FA]"
-        >
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F3ECFF] text-xs font-bold text-[#6E32F5]">
+      <div className="mt-3 border-t border-[#ECECF2] pt-3">
+        <div className="flex items-center justify-between gap-1 rounded-xl px-1 py-1">
+          <button
+            type="button"
+            onClick={() => setHeroMantraOpen(true)}
+            data-testid="sidebar-hero-trigger"
+            title="点击查看每日自我宣言"
+            className="flex flex-1 items-center gap-2.5 rounded-xl px-1.5 py-1.5 text-left transition hover:bg-[#F3ECFF]"
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F3ECFF] text-xs font-bold text-[#6E32F5]">
               {state.profile.name.slice(0, 2).toUpperCase()}
             </div>
-            <span className="text-xs font-semibold text-[#111118]">
+            <span className="truncate text-xs font-semibold text-[#111118]">
               {state.profile.name}
             </span>
-          </div>
-          <div className="flex items-center gap-2">
+          </button>
+          <div className="flex items-center gap-1 pr-1">
             <span
               suppressHydrationWarning
               title={
@@ -276,7 +280,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     ? 'Sync Attention Needed'
                     : 'Not Synced / Local Only'
               }
-              className={`inline-flex items-center justify-center ${
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg ${
                 syncStatus === 'synced'
                   ? 'text-emerald-600'
                   : syncStatus === 'error'
@@ -288,9 +292,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <RefreshCw className="h-3.5 w-3.5" />
             </span>
-            <Settings className="h-4 w-4 text-[#848494]" />
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              data-testid="sidebar-settings-trigger"
+              title="Workspace & AI Engine Settings"
+              aria-label="Open Workspace Settings"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[#848494] transition hover:bg-[#F6F5FA] hover:text-[#111118]"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
           </div>
-        </button>
+        </div>
       </div>
     </div>
   );
@@ -458,6 +471,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
 
+      <HeroMantraModal open={heroMantraOpen} onClose={() => setHeroMantraOpen(false)} />
       <SettingsModal />
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
       <FloatingCopilotWidget />
