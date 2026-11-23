@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mammoth from 'mammoth';
-import { PDFParse } from 'pdf-parse';
 
 function extractLegacyDocText(buffer: Buffer): string {
   // Best-effort readable ASCII/UTF-8 text extraction for legacy binary .doc files
@@ -29,18 +27,16 @@ export async function POST(req: NextRequest) {
     if (name.endsWith('.txt') || name.endsWith('.md') || file.type.startsWith('text/')) {
       text = buffer.toString('utf-8').trim();
     } else if (name.endsWith('.docx')) {
+      const mammoth = await import('mammoth');
       const result = await mammoth.extractRawText({ buffer });
       text = (result.value ?? '').trim();
     } else if (name.endsWith('.doc')) {
       text = extractLegacyDocText(buffer);
     } else if (name.endsWith('.pdf') || file.type === 'application/pdf') {
-      const parser = new PDFParse({ data: buffer });
-      try {
-        const result = await parser.getText();
-        text = (result.text ?? '').trim();
-      } finally {
-        await parser.destroy();
-      }
+      const { extractText, getDocumentProxy } = await import('unpdf');
+      const pdf = await getDocumentProxy(new Uint8Array(arrayBuf));
+      const result = await extractText(pdf, { mergePages: true });
+      text = (result.text ?? '').trim();
     } else {
       return NextResponse.json(
         { error: 'Unsupported document format. Please upload PDF, DOC, DOCX, TXT, or MD.' },

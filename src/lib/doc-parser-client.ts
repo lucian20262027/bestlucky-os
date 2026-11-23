@@ -16,27 +16,37 @@ export async function extractDocumentText(file: File): Promise<{
       method: 'POST',
       body: formData,
     });
-    const json = (await res.json()) as {
-      fileName?: string;
-      text?: string;
-      error?: string;
-    };
+    const raw = await res.text();
+    let json: { fileName?: string; text?: string; error?: string } = {};
+    try {
+      json = raw ? (JSON.parse(raw) as typeof json) : {};
+    } catch {
+      json = {};
+    }
     if (!res.ok) {
+      if (res.status === 413) {
+        return {
+          fileName: file.name,
+          text: '',
+          error: '文件超过 4.5MB 限制，请压缩 PDF 或直接复制正文粘贴',
+        };
+      }
       return {
         fileName: file.name,
         text: '',
-        error: json.error ?? 'Failed to parse document',
+        error: json.error ?? `文档解析失败 (HTTP ${res.status})`,
       };
     }
     return {
       fileName: json.fileName ?? file.name,
       text: json.text ?? '',
     };
-  } catch {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Network error';
     return {
       fileName: file.name,
       text: '',
-      error: 'Network error while parsing document',
+      error: `文档解析请求失败: ${msg}`,
     };
   }
 }
