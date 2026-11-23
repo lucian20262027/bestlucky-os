@@ -429,7 +429,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey, apiVersion: 'v1beta' });
 
     if (action === 'analyze_jd') {
       const jdText = String(payload.jdText ?? '').trim();
