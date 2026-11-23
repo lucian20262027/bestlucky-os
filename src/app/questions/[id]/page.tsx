@@ -79,6 +79,7 @@ function QuestionStudyContent() {
   const [generatingAi, setGeneratingAi] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [checkedSteps, setCheckedSteps] = useState<Record<number, boolean>>({});
+  const [answerSaved, setAnswerSaved] = useState(false);
 
   if (!mounted) {
     return (
@@ -607,6 +608,23 @@ ${question.redFlags.map((r) => `- Avoid: ${r}`).join('\n')}`;
                 )}
                 <button
                   type="button"
+                  onClick={() => {
+                    updateQuestionNotes(question.id, {
+                      myAnswer: notes.myAnswer,
+                      modelAnswer: notes.modelAnswer,
+                      pitch60s: notes.pitch60s,
+                      personalNotes: notes.personalNotes,
+                    });
+                    setAnswerSaved(true);
+                    window.setTimeout(() => setAnswerSaved(false), 2000);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#6E32F5] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5B24D6]"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {answerSaved ? '已保存 (Saved)' : 'Save (保存)'}
+                </button>
+                <button
+                  type="button"
                   onClick={handleGenerateModelAnswer}
                   disabled={generatingAi}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[#ECECF2] bg-[#FAFAFC] px-3 py-1.5 text-xs font-medium text-[#6E32F5] hover:border-[#6E32F5]"
@@ -658,14 +676,14 @@ ${question.redFlags.map((r) => `- Avoid: ${r}`).join('\n')}`;
                     </span>
                   </div>
                   <textarea
-                    rows={12}
+                    rows={15}
                     style={getTypographyStyle(answerStyle)}
                     value={notes.modelAnswer}
                     onChange={(e) =>
                       updateQuestionNotes(question.id, { modelAnswer: e.target.value })
                     }
                     placeholder="Click 'Generate Model Answer' above or write your own..."
-                    className={`w-full rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-4 text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none ${getTypographyClasses(
+                    className={`w-full resize-y rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-4 text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none ${getTypographyClasses(
                       answerStyle,
                       'body'
                     )}`}

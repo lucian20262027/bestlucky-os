@@ -64,6 +64,7 @@ function QuestionBankInner() {
   const [statusFilter, setStatusFilter] = useState<QuestionStatus | 'all'>('all');
   const [search, setSearch] = useState('');
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const [expandedAnswers, setExpandedAnswers] = useState<Record<string, boolean>>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<InterviewQuestion | null>(null);
 
@@ -435,9 +436,58 @@ function QuestionBankInner() {
                     >
                       {q.title}
                     </Link>
-                    <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-[#525260]">
-                      {q.prompt}
-                    </p>
+                    {(() => {
+                      const showAll = Boolean(expandedAnswers[q.id]);
+                      const modelText = (notes?.modelAnswer || q.modelAnswer || '').trim();
+                      const isLong = q.prompt.length > 220 || modelText.length > 0;
+                      return (
+                        <div className="space-y-2">
+                          <p
+                            className={`whitespace-pre-wrap text-[13px] leading-relaxed text-[#525260] ${
+                              !showAll && q.prompt.length > 220 ? 'line-clamp-3' : ''
+                            }`}
+                          >
+                            {q.prompt}
+                          </p>
+                          {modelText && (
+                            <div className="rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-3.5 py-2.5">
+                              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#6E32F5]">
+                                Model / Reference Answer
+                              </div>
+                              <p
+                                className={`whitespace-pre-wrap text-xs leading-relaxed text-[#2E2E3A] ${
+                                  !showAll ? 'line-clamp-4' : ''
+                                }`}
+                              >
+                                {modelText}
+                              </p>
+                            </div>
+                          )}
+                          {isLong && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedAnswers((prev) => ({
+                                  ...prev,
+                                  [q.id]: !prev[q.id],
+                                }))
+                              }
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-[#6E32F5] hover:underline"
+                            >
+                              {showAll ? (
+                                <>
+                                  Collapse (收起) <ChevronUp className="h-3.5 w-3.5" />
+                                </>
+                              ) : (
+                                <>
+                                  Show All (展开完整回答) <ChevronDown className="h-3.5 w-3.5" />
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {state.aiSettings.language !== 'en' && (
                       <p className="rounded-lg bg-amber-50/70 px-3 py-1.5 text-xs text-amber-950">
                         {q.promptZhHint}
@@ -477,27 +527,14 @@ function QuestionBankInner() {
                         )}
                       </button>
                       {q.isCustom && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingQuestion(q);
-                              setModalOpen(true);
-                            }}
-                            className="rounded-lg border border-[#ECECF2] p-1.5 text-[#848494] hover:text-[#111118]"
-                            title="Edit custom question"
-                          >
-                            <Edit3 className="h-3 w-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteCustomQuestion(q.id)}
-                            className="rounded-lg border border-[#ECECF2] p-1.5 text-[#848494] hover:border-rose-200 hover:text-rose-600"
-                            title="Delete custom question"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </>
+                        <button
+                          type="button"
+                          onClick={() => deleteCustomQuestion(q.id)}
+                          className="rounded-lg border border-[#ECECF2] p-1.5 text-[#848494] hover:border-rose-200 hover:text-rose-600"
+                          title="Delete custom question"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
                       )}
                     </div>
                   </div>
