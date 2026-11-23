@@ -434,7 +434,16 @@ export interface KnowledgeArticle {
   rawText: string;
   summary: string;
   takeaways: string[];
-  roleAngles: {
+  unifiedAngle?: string;
+  roleNuance?: string;
+  practicalUse?: {
+    scenarios: string[];
+    interviewQuestions: string[];
+    spokenAnswer: string;
+    pitfalls: string[];
+    deepFollowUps: string[];
+  };
+  roleAngles?: {
     fdpm: string;
     aiPm: string;
     fde: string;

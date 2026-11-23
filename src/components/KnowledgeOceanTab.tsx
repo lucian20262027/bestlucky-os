@@ -120,7 +120,16 @@ export default function KnowledgeOceanTab({
         data?: {
           summary: string;
           takeaways: string[];
-          roleAngles: { fdpm: string; aiPm: string; fde: string };
+          unifiedAngle?: string;
+          roleNuance?: string;
+          practicalUse?: {
+            scenarios: string[];
+            interviewQuestions: string[];
+            spokenAnswer: string;
+            pitfalls: string[];
+            deepFollowUps: string[];
+          };
+          roleAngles?: { fdpm: string; aiPm: string; fde: string };
           tags: string[];
         };
         error?: string;
@@ -138,6 +147,9 @@ export default function KnowledgeOceanTab({
         rawText: rawTextInput.trim(),
         summary: json.data.summary,
         takeaways: json.data.takeaways,
+        unifiedAngle: json.data.unifiedAngle,
+        roleNuance: json.data.roleNuance,
+        practicalUse: json.data.practicalUse,
         roleAngles: json.data.roleAngles,
         tags: json.data.tags,
         createdAt: new Date().toISOString(),
@@ -154,16 +166,31 @@ export default function KnowledgeOceanTab({
 
   const syncToSnippets = (article: KnowledgeArticle) => {
     const snippetId = article.syncedSnippetId || `snip-ocean-${article.id}`;
+    const mainSoundbite =
+      article.practicalUse?.spokenAnswer ||
+      article.unifiedAngle ||
+      article.roleAngles?.aiPm ||
+      article.summary;
+    const triggerQuestion =
+      article.practicalUse?.interviewQuestions?.[0] ||
+      `How would you apply "${article.title}" to enterprise AI product delivery?`;
     const snippet: KnowledgeSnippet = {
       id: snippetId,
       title: article.title,
-      soundbite: article.roleAngles.aiPm,
-      triggerQuestion: `How would you apply "${article.title}" to enterprise AI product delivery?`,
+      soundbite: mainSoundbite,
+      triggerQuestion,
       deliveryTemplate: [
         `核心 Takeaways：\n${article.takeaways.map((t, i) => `${i + 1}. ${t}`).join('\n')}`,
-        `\n[FDPM 视角]\n${article.roleAngles.fdpm}`,
-        `\n[FDE 视角]\n${article.roleAngles.fde}`,
-      ].join('\n'),
+        article.roleNuance ? `\n[FDE vs FDPM 差异]\n${article.roleNuance}` : '',
+        article.practicalUse?.pitfalls?.length
+          ? `\n[注意风险]\n${article.practicalUse.pitfalls.map((p) => `- ${p}`).join('\n')}`
+          : '',
+        article.practicalUse?.deepFollowUps?.length
+          ? `\n[深度 Follow-up]\n${article.practicalUse.deepFollowUps.map((f) => `- ${f}`).join('\n')}`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
       roles: ['fdpm', 'ai-pm', 'fde'],
       tags: article.tags.length > 0 ? article.tags : ['Knowledge Ocean'],
       updatedAt: new Date().toISOString(),
@@ -422,62 +449,174 @@ export default function KnowledgeOceanTab({
                   </ul>
                 </div>
 
-                {/* 3 Role Spoken Angles */}
-                <div className="mt-4">
-                  <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#848494]">
-                    面试口语套用 (FDPM / AI PM / FDE)
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-3">
-                    {(
-                      [
-                        { key: 'fdpm', label: 'FDPM 视角', text: article.roleAngles.fdpm },
-                        { key: 'aiPm', label: 'AI PM 视角', text: article.roleAngles.aiPm },
-                        { key: 'fde', label: 'FDE 视角', text: article.roleAngles.fde },
-                      ] as const
-                    ).map((angle) => {
-                      const actionKey = `${article.id}-${angle.key}`;
-                      return (
-                        <div
-                          key={angle.key}
-                          className="flex flex-col justify-between rounded-xl border border-[#ECECF2] bg-white p-3"
+                {/* Unified Interview Synthesis + FDE/FDPM Nuance */}
+                {(article.unifiedAngle || article.roleAngles) && (
+                  <div className="mt-4 rounded-xl border border-[#D4C5FD]/60 bg-[#F9F6FF] p-3.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#6E32F5]">
+                        面试统一洞察 (FDE / FDPM / AI PM 通用)
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            speakText(
+                              `${article.id}-unified`,
+                              article.unifiedAngle || article.roleAngles?.aiPm || ''
+                            )
+                          }
+                          className="rounded-md p-1 text-[#6E32F5] hover:bg-white"
+                          title="朗读洞察"
                         >
-                          <div>
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="rounded-md bg-[#F3ECFF] px-2 py-0.5 text-[10px] font-semibold text-[#6E32F5]">
-                                {angle.label}
-                              </span>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => speakText(actionKey, angle.text)}
-                                  className="rounded-md p-1 text-[#848494] hover:bg-[#F3ECFF] hover:text-[#6E32F5]"
-                                  title="朗读话术"
-                                >
-                                  <Volume2 className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void copyText(actionKey, angle.text)}
-                                  className="rounded-md p-1 text-[#848494] hover:bg-[#F7F7FA] hover:text-[#111118]"
-                                  title="复制话术"
-                                >
-                                  {copiedKey === actionKey ? (
-                                    <Check className="h-3.5 w-3.5 text-emerald-600" />
-                                  ) : (
-                                    <Copy className="h-3.5 w-3.5" />
-                                  )}
-                                </button>
-                              </div>
-                            </div>
-                            <p className="mt-2 text-xs leading-relaxed text-[#111118]">
-                              &ldquo;{angle.text}&rdquo;
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
+                          <Volume2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void copyText(
+                              `${article.id}-unified`,
+                              article.unifiedAngle || article.roleAngles?.aiPm || ''
+                            )
+                          }
+                          className="rounded-md p-1 text-[#6E32F5] hover:bg-white"
+                          title="复制洞察"
+                        >
+                          {copiedKey === `${article.id}-unified` ? (
+                            <Check className="h-3.5 w-3.5 text-emerald-600" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-1.5 text-xs leading-relaxed text-[#111118]">
+                      &ldquo;{article.unifiedAngle || article.roleAngles?.aiPm}&rdquo;
+                    </p>
+                    {article.roleNuance && (
+                      <p className="mt-2 rounded-lg bg-white/80 px-3 py-2 text-[11px] leading-relaxed text-[#5E5E6E]">
+                        💡 {article.roleNuance}
+                      </p>
+                    )}
                   </div>
-                </div>
+                )}
+
+                {/* Practical Use Playbook (真实实用) */}
+                {article.practicalUse && (
+                  <div className="mt-4 rounded-xl border border-[#ECECF2] bg-white p-4 space-y-3.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#111118]">
+                        真实实用 · 面试实战手册 (Practical Playbook)
+                      </span>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {/* Scenarios & Interview Questions */}
+                      <div className="rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-3 space-y-2.5">
+                        <div>
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6E32F5]">
+                            可能用到的场景
+                          </div>
+                          <ul className="mt-1.5 space-y-1">
+                            {article.practicalUse.scenarios.map((sc, i) => (
+                              <li key={i} className="text-[11px] leading-relaxed text-[#111118]">
+                                • {sc}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div className="border-t border-[#ECECF2] pt-2">
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#848494]">
+                            高频面试提问
+                          </div>
+                          <ul className="mt-1 space-y-1">
+                            {article.practicalUse.interviewQuestions.map((q, i) => (
+                              <li
+                                key={i}
+                                className="text-[11px] italic leading-relaxed text-[#5E5E6E]"
+                              >
+                                {q}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+
+                      {/* Spoken Direct Answer */}
+                      <div className="flex flex-col justify-between rounded-xl border border-[#D4C5FD]/60 bg-[#F9F6FF]/60 p-3">
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#6E32F5]">
+                              口语化直接回答 (Ready-to-Speak)
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  speakText(
+                                    `${article.id}-spoken`,
+                                    article.practicalUse?.spokenAnswer ?? ''
+                                  )
+                                }
+                                className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-0.5 text-[10px] font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]"
+                              >
+                                <Volume2 className="h-3 w-3" />
+                                朗读
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void copyText(
+                                    `${article.id}-spoken`,
+                                    article.practicalUse?.spokenAnswer ?? ''
+                                  )
+                                }
+                                className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-0.5 text-[10px] font-medium text-[#5E5E6E] hover:text-[#111118]"
+                              >
+                                {copiedKey === `${article.id}-spoken` ? (
+                                  <Check className="h-3 w-3 text-emerald-600" />
+                                ) : (
+                                  <Copy className="h-3 w-3" />
+                                )}
+                                复制
+                              </button>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-xs leading-relaxed text-[#111118]">
+                            &ldquo;{article.practicalUse.spokenAnswer}&rdquo;
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Risks & Deep Follow-ups */}
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="rounded-xl border border-amber-200/80 bg-amber-50/50 p-3">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+                          注意的风险与避坑
+                        </div>
+                        <ul className="mt-1.5 space-y-1">
+                          {article.practicalUse.pitfalls.map((pit, i) => (
+                            <li key={i} className="text-[11px] leading-relaxed text-[#111118]">
+                              ⚠ {pit}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-3">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-[#6E32F5]">
+                          深度 Follow-up 与话题拓展
+                        </div>
+                        <ul className="mt-1.5 space-y-1">
+                          {article.practicalUse.deepFollowUps.map((fu, i) => (
+                            <li key={i} className="text-[11px] leading-relaxed text-[#111118]">
+                              → {fu}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Collapsible raw text */}
                 <div className="mt-3 border-t border-[#ECECF2] pt-2.5">

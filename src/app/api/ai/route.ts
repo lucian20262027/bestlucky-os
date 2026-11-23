@@ -328,36 +328,57 @@ export async function POST(req: NextRequest) {
     }
     if (action === 'analyze_article') {
       const title = String(payload.title ?? 'Uploaded Article').trim() || 'Uploaded Article';
-      const content = String(payload.content ?? '').trim();
-      const sentences = content
-        .split(/(?<=[.!?。！？])\s+|\n+/)
+      const rawContent = String(payload.content ?? '').trim();
+      const normalized = rawContent.replace(/\r?\n+/g, ' ').replace(/\s+/g, ' ').trim();
+      const sentences = normalized
+        .split(/(?<=[.!?。！？])\s+/)
         .map((s) => s.trim())
-        .filter((s) => s.length > 25);
+        .filter((s) => s.length >= 45 && s.length <= 280);
 
       const summary =
         sentences.slice(0, 2).join(' ') ||
-        `《${title}》聚焦于 AI 系统落地、产品架构取舍与规模化交付方法论。`;
+        `《${title}》聚焦于 AI 系统落地、评估体系与规模化交付方法论。`;
 
       const takeaways =
         sentences.length >= 3
-          ? sentences.slice(0, 4).map((s) => (s.length > 180 ? `${s.slice(0, 177)}...` : s))
+          ? sentences.slice(0, 4)
           : [
-              `核心洞察 1：围绕「${title}」提出的方法论，将模糊业务需求拆解为可验证的系统指标。`,
-              '核心洞察 2：在生产环境中，确定性护栏（Eval / Schema Guardrail）与可观测性比单点模型调参更决定落地成败。',
-              '核心洞察 3：通过跨团队闭环迭代（Pilot → ARR / SLA），把单次客户定制沉淀为可复用平台能力。',
+              `围绕「${title}」提出的方法论，将模糊的 AI 能力需求拆解为可量化、可回归验证的指标闭环。`,
+              '在生产环境中，确定性护栏（Eval / Schema Guardrail）与持续观测比单点 Prompt 调优更能决定交付稳定性。',
+              '通过先跑通小范围 Pilot 闭环（30 天验证 ROI），再沉淀成可复用的平台级原语（Primitives）。',
             ];
 
-      const roleAngles = {
-        fdpm: `In "${title}", what stood out to me as an FDPM is closing the gap between customer ambiguity and measurable ROI—starting with a scoped 30-day pilot, defining weekly WBR metrics, and turning bespoke field learnings into repeatable product primitives.`,
-        aiPm: `From an AI PM lens, "${title}" reinforces pairing probabilistic generation with deterministic eval harnesses and routing guardrails—optimizing latency, cost, and accuracy regressions before scaling to production.`,
-        fde: `As an FDE, the takeaway from "${title}" is decomposing legacy workflows end-to-end: ship an observable vertical slice quickly, enforce idempotent write-backs and clear fallback paths, and eliminate integration bottlenecks on site.`,
+      const unifiedAngle = `In "${title}", the biggest operational lesson is treating AI behavior as an engineering & product contract—pairing probabilistic generation with explicit eval harnesses, failure attribution, and measurable business SLA before scaling.`;
+      const roleNuance = `FDE vs FDPM 差异：FDE 侧重在现场快速拆解系统瓶颈、落地端到端 Eval Harness 与幂等回写；FDPM/AI PM 则侧重定义成功指标（Accuracy / Latency / Cost 权衡）、设计 Human-in-the-loop 审核阈值，并把单客经验转化为标准产品能力。`;
+
+      const practicalUse = {
+        scenarios: [
+          '当面试官问你如何把一个 Demo 级 AI 功能推向企业级生产环境（0→1 到规模化）',
+          '被追问“怎么评估大模型效果 / 避免上线后准确率回退（Regression）”时的框架回答',
+          '探讨客户定制需求与平台通用能力冲突（FDE / FDPM 高频权衡题）',
+        ],
+        interviewQuestions: [
+          `"How do you evaluate and ship an LLM feature when ground truth is ambiguous?"`,
+          `"Tell me about a time you caught or prevented an AI quality regression in production."`,
+          `"As an FDE / FDPM, how do you balance bespoke customer fixes with reusable platform architecture?"`,
+        ],
+        spokenAnswer: `A pattern I really like from "${title}" is never shipping an LLM feature on vibes alone. In my projects, I start with 20 to 30 real failure traces from users, turn them into a lightweight eval set with clear pass/fail rubrics, and gate every prompt or model change on accuracy, p95 latency, and cost per task. That way, we move fast in pilots without breaking trust in production.`,
+        pitfalls: [
+          '切忌只说“我们加了 Prompt Engineering 或换了更大模型”，必须讲清量化基准（Baseline vs Target）和失败归因机制。',
+          '避免把离线 Eval 分数当成唯一标准：一定要补充线上真实流量抽样（Online Shadow / HITL）与延迟/成本约束。',
+        ],
+        deepFollowUps: [
+          'Follow-up 1: 如果没有现成标注数据集（Golden Dataset），第一周怎么冷启动你的 Eval？',
+          'Follow-up 2: LLM-as-a-Judge 本身也有偏见和噪声，你如何校准评估器（Meta-eval）？',
+          '相关拓展：Deterministic Guardrails、Confidence-gated HITL Routing、Model Tiering（大小模型路由降本）。',
+        ],
       };
 
-      const tags = ['AI Strategy', 'System Design', 'Interview Soundbite'];
+      const tags = ['AI Evals', 'Production AI', 'Interview Playbook'];
       return NextResponse.json({
         mode: 'local_fallback',
         warning,
-        data: { summary, takeaways, roleAngles, tags },
+        data: { summary, takeaways, unifiedAngle, roleNuance, practicalUse, tags },
       });
     }
     if (action === 'interviewer_turn') {
@@ -649,7 +670,7 @@ Return strict JSON:
       }
       const interaction = await ai.interactions.create({
         model: chosenModel,
-        input: `Analyze this article for a senior candidate preparing for FDPM, AI PM, and FDE interviews at top US AI companies.
+        input: `Analyze this article for a senior candidate preparing for FDE, FDPM, and AI PM interviews at top US AI companies.
 ${getLangInstruction(language)}
 
 Article Title: ${title}
@@ -658,30 +679,38 @@ ${content}
 
 Return strict JSON matching the schema:
 - summary: Crisp 2-sentence executive summary of the article's core thesis.
-- takeaways: 3 to 5 concrete, insightful takeaways (referencing real concepts/numbers from the article).
-- roleAngles:
-  - fdpm: A ready-to-speak 2-sentence English interview soundbite framing this insight for an FDPM (Forward Deployed Product Manager) interview.
-  - aiPm: A ready-to-speak 2-sentence English interview soundbite framing this insight for an AI PM interview.
-  - fde: A ready-to-speak 2-sentence English interview soundbite framing this insight for an FDE (Forward Deployed Engineer) interview.
-- tags: 3 to 5 concise topic tags (e.g. ["Agents", "Evals", "Enterprise AI"]).`,
+- takeaways: 3 to 5 concrete, full-sentence takeaways referencing real concepts/numbers from the article.
+- unifiedAngle: One unified, high-impact 2-sentence English interview insight synthesizing the core lesson (do NOT split into 3 separate roles).
+- roleNuance: Brief Simplified Chinese note explaining only where FDE vs FDPM/AI PM application meaningfully differs (if any).
+- practicalUse:
+  - scenarios: 2 to 3 concrete interview/work scenarios where this insight shines (Simplified Chinese).
+  - interviewQuestions: 2 to 3 exact English interview questions this answers well.
+  - spokenAnswer: Natural, conversational, ready-to-speak 3-4 sentence English answer you can say directly in an interview.
+  - pitfalls: 2 common pitfalls or traps candidates fall into when discussing this topic (Simplified Chinese).
+  - deepFollowUps: 2 to 3 deeper Bar-Raiser follow-up questions & adjacent topics to expand on.
+- tags: 3 to 5 concise topic tags.`,
         response_mime_type: 'application/json',
         response_format: {
           type: 'object',
           properties: {
             summary: { type: 'string' },
             takeaways: { type: 'array', items: { type: 'string' } },
-            roleAngles: {
+            unifiedAngle: { type: 'string' },
+            roleNuance: { type: 'string' },
+            practicalUse: {
               type: 'object',
               properties: {
-                fdpm: { type: 'string' },
-                aiPm: { type: 'string' },
-                fde: { type: 'string' },
+                scenarios: { type: 'array', items: { type: 'string' } },
+                interviewQuestions: { type: 'array', items: { type: 'string' } },
+                spokenAnswer: { type: 'string' },
+                pitfalls: { type: 'array', items: { type: 'string' } },
+                deepFollowUps: { type: 'array', items: { type: 'string' } },
               },
-              required: ['fdpm', 'aiPm', 'fde'],
+              required: ['scenarios', 'interviewQuestions', 'spokenAnswer', 'pitfalls', 'deepFollowUps'],
             },
             tags: { type: 'array', items: { type: 'string' } },
           },
-          required: ['summary', 'takeaways', 'roleAngles', 'tags'],
+          required: ['summary', 'takeaways', 'unifiedAngle', 'roleNuance', 'practicalUse', 'tags'],
         },
         store: false,
       });
