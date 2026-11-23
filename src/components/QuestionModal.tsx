@@ -52,6 +52,15 @@ export function QuestionModal({
 
   useEffect(() => {
     if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
     if (initialQuestion) {
       setTitle(initialQuestion.title);
       const combined = Array.from(
@@ -180,8 +189,14 @@ export function QuestionModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-[2px]">
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-[#ECECF2] bg-white shadow-xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded-2xl border border-[#ECECF2] bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-[#ECECF2] px-6 py-4">
           <div>
             <h2 className="text-base font-semibold text-[#111118]">
@@ -311,42 +326,36 @@ export function QuestionModal({
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#525260]">Question Prompt *</label>
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-medium text-[#525260]">Question Prompt *</label>
+              <span className="text-[11px] text-[#848494]">支持换行与空行分段</span>
+            </div>
             <textarea
               required
-              rows={3}
+              rows={4}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Paste the exact interview question or case prompt..."
-              className="mt-1 w-full rounded-lg border border-[#ECECF2] px-3 py-2 text-xs leading-relaxed focus:border-[#6E32F5] focus:outline-none"
+              className="mt-1 w-full resize-y rounded-xl border border-[#ECECF2] px-3.5 py-2.5 text-xs leading-relaxed focus:border-[#6E32F5] focus:outline-none"
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
+          <div>
+            <div className="flex items-center justify-between">
               <label className="block text-xs font-medium text-[#525260]">
                 Model / Reference Answer (高分范文 / 标准答案)
               </label>
-              <textarea
-                rows={4}
-                value={modelAnswer}
-                onChange={(e) => setModelAnswer(e.target.value)}
-                placeholder="Write or paste the reference answer, key numbers, or structure..."
-                className="mt-1 w-full rounded-lg border border-[#ECECF2] px-3 py-2 text-xs leading-relaxed focus:border-[#6E32F5] focus:outline-none"
-              />
+              <span className="text-[11px] text-[#848494]">
+                全宽大编辑区 · 支持空行分段与 Markdown 要点，可拖拽右下角调高
+              </span>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-[#525260]">
-                My Personal Answer Draft (我的回答草稿)
-              </label>
-              <textarea
-                rows={4}
-                value={myAnswer}
-                onChange={(e) => setMyAnswer(e.target.value)}
-                placeholder="Draft how YOU will answer this in the interview..."
-                className="mt-1 w-full rounded-lg border border-[#ECECF2] px-3 py-2 text-xs leading-relaxed focus:border-[#6E32F5] focus:outline-none"
-              />
-            </div>
+            <textarea
+              rows={10}
+              value={modelAnswer}
+              onChange={(e) => setModelAnswer(e.target.value)}
+              placeholder="Write or paste the reference answer, key numbers, or structure..."
+              className="mt-1 w-full resize-y rounded-xl border border-[#ECECF2] bg-[#FAFAFC]/60 px-3.5 py-2.5 text-xs leading-relaxed focus:border-[#6E32F5] focus:bg-white focus:outline-none"
+            />
           </div>
 
           {/* Video Attachment */}

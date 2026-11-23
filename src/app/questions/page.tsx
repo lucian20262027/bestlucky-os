@@ -435,7 +435,9 @@ function QuestionBankInner() {
                     >
                       {q.title}
                     </Link>
-                    <p className="text-[13px] leading-relaxed text-[#525260]">{q.prompt}</p>
+                    <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-[#525260]">
+                      {q.prompt}
+                    </p>
                     {state.aiSettings.language !== 'en' && (
                       <p className="rounded-lg bg-amber-50/70 px-3 py-1.5 text-xs text-amber-950">
                         {q.promptZhHint}
