@@ -14,14 +14,16 @@ import {
   Trash2,
   Volume2,
   Wand2,
+  Waves,
   X,
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
+import KnowledgeOceanTab from '@/components/KnowledgeOceanTab';
 import { roleBadgeClasses } from '@/lib/helpers';
 import { ROLE_LIST, ROLES_BY_ID } from '@/lib/roles';
 import { KnowledgeSnippet, RoleTrack, VocabItem } from '@/lib/types';
 
-type HubSubTab = 'vocab' | 'snippets';
+type HubSubTab = 'vocab' | 'snippets' | 'ocean';
 
 export default function KnowledgeHubSection() {
   const {
@@ -267,19 +269,7 @@ export default function KnowledgeHubSection() {
     <div className="space-y-5">
       {/* Sub-navigation & Filters */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-xl border border-[var(--border)] bg-[var(--canvas)] p-1">
-          <button
-            type="button"
-            onClick={() => setSubTab('snippets')}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
-              subTab === 'snippets'
-                ? 'bg-white text-[var(--accent)] shadow-2xs'
-                : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
-            }`}
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            知识摘录 & Soundbites ({state.knowledgeSnippets.length})
-          </button>
+        <div className="inline-flex flex-wrap rounded-xl border border-[var(--border)] bg-[var(--canvas)] p-1">
           <button
             type="button"
             onClick={() => setSubTab('vocab')}
@@ -290,7 +280,31 @@ export default function KnowledgeHubSection() {
             }`}
           >
             <BookOpen className="h-3.5 w-3.5" />
-            难词发音 & 单词本 ({state.vocabItems.length})
+            难词发音 &amp; 单词本 ({state.vocabItems.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubTab('snippets')}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+              subTab === 'snippets'
+                ? 'bg-white text-[var(--accent)] shadow-2xs'
+                : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+            }`}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            知识摘录 &amp; Soundbites ({state.knowledgeSnippets.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubTab('ocean')}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+              subTab === 'ocean'
+                ? 'bg-white text-[var(--accent)] shadow-2xs'
+                : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+            }`}
+          >
+            <Waves className="h-3.5 w-3.5" />
+            知识海洋 ({(state.knowledgeArticles ?? []).length})
           </button>
         </div>
 
@@ -301,23 +315,31 @@ export default function KnowledgeHubSection() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={subTab === 'vocab' ? '搜索单词/释义...' : '搜索关键词/问题/话术...'}
+              placeholder={
+                subTab === 'vocab'
+                  ? '搜索单词/释义...'
+                  : subTab === 'ocean'
+                    ? '搜索文章/Takeaway...'
+                    : '搜索关键词/问题/话术...'
+              }
               className="w-48 rounded-xl border border-[var(--border)] bg-[var(--canvas)] py-1.5 pr-3 pl-8 text-xs text-[var(--ink-primary)] focus:border-[var(--accent)] focus:bg-white focus:outline-none"
             />
           </div>
 
-          <select
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value as 'all' | RoleTrack)}
-            className="rounded-xl border border-[var(--border)] bg-[var(--canvas)] px-3 py-1.5 text-xs font-medium text-[var(--ink-primary)] focus:border-[var(--accent)] focus:outline-none"
-          >
-            <option value="all">全部岗位 (All Roles)</option>
-            {ROLE_LIST.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.shortLabel}
-              </option>
-            ))}
-          </select>
+          {subTab !== 'ocean' && (
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value as 'all' | RoleTrack)}
+              className="rounded-xl border border-[var(--border)] bg-[var(--canvas)] px-3 py-1.5 text-xs font-medium text-[var(--ink-primary)] focus:border-[var(--accent)] focus:outline-none"
+            >
+              <option value="all">全部岗位 (All Roles)</option>
+              {ROLE_LIST.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.shortLabel}
+                </option>
+              ))}
+            </select>
+          )}
 
           {subTab === 'snippets' && filteredSnippets.length > 0 && (
             <button
@@ -338,16 +360,26 @@ export default function KnowledgeHubSection() {
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={subTab === 'vocab' ? openNewVocab : openNewSnippet}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent)] px-3.5 py-1.5 text-xs font-semibold text-white transition hover:opacity-95"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {subTab === 'vocab' ? '添加单词' : '添加知识摘录'}
-          </button>
+          {subTab !== 'ocean' && (
+            <button
+              type="button"
+              onClick={subTab === 'vocab' ? openNewVocab : openNewSnippet}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent)] px-3.5 py-1.5 text-xs font-semibold text-white transition hover:opacity-95"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {subTab === 'vocab' ? '添加单词' : '添加知识摘录'}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Sub-module 3: Knowledge Ocean */}
+      {subTab === 'ocean' && (
+        <KnowledgeOceanTab
+          searchQuery={searchQuery}
+          onJumpToSnippets={() => setSubTab('snippets')}
+        />
+      )}
 
       {/* Sub-module 1: Knowledge Snippets / Soundbites (List or Flashcard Mode) */}
       {subTab === 'snippets' && flashcardMode && filteredSnippets.length > 0 && (

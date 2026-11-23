@@ -242,6 +242,7 @@ export function createDefaultState(baseTodayISO?: string): AppState {
     stories: SEED_STORIES,
     vocabItems: SEED_VOCAB_ITEMS,
     knowledgeSnippets: SEED_KNOWLEDGE_SNIPPETS,
+    knowledgeArticles: [],
     todos: SEED_TODOS,
     affirmationVideos: SEED_AFFIRMATION_VIDEOS,
     applications: SEED_APPLICATIONS,
@@ -325,6 +326,9 @@ export function loadAppState(): AppState {
         Array.isArray(parsed.knowledgeSnippets) && parsed.knowledgeSnippets.length > 0
           ? parsed.knowledgeSnippets
           : defaults.knowledgeSnippets,
+      knowledgeArticles: Array.isArray(parsed.knowledgeArticles)
+        ? parsed.knowledgeArticles
+        : defaults.knowledgeArticles,
       todos: Array.isArray(parsed.todos) ? parsed.todos : defaults.todos,
       affirmationVideos:
         Array.isArray(parsed.affirmationVideos) && parsed.affirmationVideos.length > 0
@@ -405,6 +409,9 @@ export function parseImportedState(jsonText: string): AppState | null {
       knowledgeSnippets: Array.isArray(parsed.knowledgeSnippets)
         ? parsed.knowledgeSnippets
         : defaults.knowledgeSnippets,
+      knowledgeArticles: Array.isArray(parsed.knowledgeArticles)
+        ? parsed.knowledgeArticles
+        : defaults.knowledgeArticles,
       todos: Array.isArray(parsed.todos) ? parsed.todos : defaults.todos,
       affirmationVideos:
         Array.isArray(parsed.affirmationVideos) && parsed.affirmationVideos.length > 0

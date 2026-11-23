@@ -426,6 +426,24 @@ export interface ResumeProfile {
   updatedAt: string;
 }
 
+export interface KnowledgeArticle {
+  id: string;
+  title: string;
+  fileName?: string;
+  sourceUrl?: string;
+  rawText: string;
+  summary: string;
+  takeaways: string[];
+  roleAngles: {
+    fdpm: string;
+    aiPm: string;
+    fde: string;
+  };
+  tags: string[];
+  syncedSnippetId?: string;
+  createdAt: string;
+}
+
 export interface AppState {
   profile: UserProfile;
   aiSettings: AISettings;
@@ -442,6 +460,7 @@ export interface AppState {
   stories: StarStory[];
   vocabItems: VocabItem[];
   knowledgeSnippets: KnowledgeSnippet[];
+  knowledgeArticles: KnowledgeArticle[];
   todos: TodoItem[];
   affirmationVideos: AffirmationVideo[];
   applications: JobApplication[];

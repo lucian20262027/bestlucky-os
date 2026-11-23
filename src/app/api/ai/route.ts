@@ -57,7 +57,8 @@ export async function POST(req: NextRequest) {
       | 'review_speech'
       | 'analyze_jd'
       | 'analyze_common_jds'
-      | 'match_resume_jd';
+      | 'match_resume_jd'
+      | 'analyze_article';
     model?: string;
     language?: LanguageMode;
     payload?: Record<string, unknown>;
@@ -324,6 +325,40 @@ export async function POST(req: NextRequest) {
       const word = String(payload.word ?? '').trim();
       const data = await analyzeVocabFallback(word);
       return NextResponse.json({ mode: 'local_fallback', warning, data });
+    }
+    if (action === 'analyze_article') {
+      const title = String(payload.title ?? 'Uploaded Article').trim() || 'Uploaded Article';
+      const content = String(payload.content ?? '').trim();
+      const sentences = content
+        .split(/(?<=[.!?。！？])\s+|\n+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 25);
+
+      const summary =
+        sentences.slice(0, 2).join(' ') ||
+        `《${title}》聚焦于 AI 系统落地、产品架构取舍与规模化交付方法论。`;
+
+      const takeaways =
+        sentences.length >= 3
+          ? sentences.slice(0, 4).map((s) => (s.length > 180 ? `${s.slice(0, 177)}...` : s))
+          : [
+              `核心洞察 1：围绕「${title}」提出的方法论，将模糊业务需求拆解为可验证的系统指标。`,
+              '核心洞察 2：在生产环境中，确定性护栏（Eval / Schema Guardrail）与可观测性比单点模型调参更决定落地成败。',
+              '核心洞察 3：通过跨团队闭环迭代（Pilot → ARR / SLA），把单次客户定制沉淀为可复用平台能力。',
+            ];
+
+      const roleAngles = {
+        fdpm: `In "${title}", what stood out to me as an FDPM is closing the gap between customer ambiguity and measurable ROI—starting with a scoped 30-day pilot, defining weekly WBR metrics, and turning bespoke field learnings into repeatable product primitives.`,
+        aiPm: `From an AI PM lens, "${title}" reinforces pairing probabilistic generation with deterministic eval harnesses and routing guardrails—optimizing latency, cost, and accuracy regressions before scaling to production.`,
+        fde: `As an FDE, the takeaway from "${title}" is decomposing legacy workflows end-to-end: ship an observable vertical slice quickly, enforce idempotent write-backs and clear fallback paths, and eliminate integration bottlenecks on site.`,
+      };
+
+      const tags = ['AI Strategy', 'System Design', 'Interview Soundbite'];
+      return NextResponse.json({
+        mode: 'local_fallback',
+        warning,
+        data: { summary, takeaways, roleAngles, tags },
+      });
     }
     if (action === 'interviewer_turn') {
       const data = generateLocalInterviewerReply({
@@ -601,6 +636,56 @@ Return strict JSON:
         },
         store: false,
       });
+      const raw = stripCodeFences(interaction.output_text ?? '');
+      const parsed = JSON.parse(raw);
+      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: parsed });
+    }
+
+    if (action === 'analyze_article') {
+      const title = String(payload.title ?? 'Uploaded Article').trim();
+      const content = String(payload.content ?? '').trim().slice(0, 18000);
+      if (!content) {
+        return NextResponse.json({ error: 'Article content is required' }, { status: 400 });
+      }
+      const interaction = await ai.interactions.create({
+        model: chosenModel,
+        input: `Analyze this article for a senior candidate preparing for FDPM, AI PM, and FDE interviews at top US AI companies.
+${getLangInstruction(language)}
+
+Article Title: ${title}
+Article Content:
+${content}
+
+Return strict JSON matching the schema:
+- summary: Crisp 2-sentence executive summary of the article's core thesis.
+- takeaways: 3 to 5 concrete, insightful takeaways (referencing real concepts/numbers from the article).
+- roleAngles:
+  - fdpm: A ready-to-speak 2-sentence English interview soundbite framing this insight for an FDPM (Forward Deployed Product Manager) interview.
+  - aiPm: A ready-to-speak 2-sentence English interview soundbite framing this insight for an AI PM interview.
+  - fde: A ready-to-speak 2-sentence English interview soundbite framing this insight for an FDE (Forward Deployed Engineer) interview.
+- tags: 3 to 5 concise topic tags (e.g. ["Agents", "Evals", "Enterprise AI"]).`,
+        response_mime_type: 'application/json',
+        response_format: {
+          type: 'object',
+          properties: {
+            summary: { type: 'string' },
+            takeaways: { type: 'array', items: { type: 'string' } },
+            roleAngles: {
+              type: 'object',
+              properties: {
+                fdpm: { type: 'string' },
+                aiPm: { type: 'string' },
+                fde: { type: 'string' },
+              },
+              required: ['fdpm', 'aiPm', 'fde'],
+            },
+            tags: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['summary', 'takeaways', 'roleAngles', 'tags'],
+        },
+        store: false,
+      });
+
       const raw = stripCodeFences(interaction.output_text ?? '');
       const parsed = JSON.parse(raw);
       return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: parsed });

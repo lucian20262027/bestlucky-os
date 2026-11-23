@@ -16,6 +16,7 @@ import {
   CustomLoopPlan,
   InterviewQuestion,
   JobApplication,
+  KnowledgeArticle,
   KnowledgeSnippet,
   LarkSettings,
   LibraryItem,
@@ -78,6 +79,8 @@ interface AppContextValue {
   deleteVocabItem: (id: string) => void;
   upsertKnowledgeSnippet: (snippet: KnowledgeSnippet) => void;
   deleteKnowledgeSnippet: (id: string) => void;
+  upsertKnowledgeArticle: (article: KnowledgeArticle) => void;
+  deleteKnowledgeArticle: (id: string) => void;
   addTodo: (todo: Omit<TodoItem, 'id' | 'createdAt' | 'completed'>) => void;
   updateTodo: (id: string, patch: Partial<TodoItem>) => void;
   toggleTodo: (id: string) => void;
@@ -619,6 +622,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [commit]
   );
 
+  const upsertKnowledgeArticle = useCallback(
+    (article: KnowledgeArticle) => {
+      commit((prev) => {
+        const list = prev.knowledgeArticles ?? [];
+        const exists = list.some((a) => a.id === article.id);
+        return {
+          ...prev,
+          knowledgeArticles: exists
+            ? list.map((a) => (a.id === article.id ? article : a))
+            : [article, ...list],
+        };
+      });
+    },
+    [commit]
+  );
+
+  const deleteKnowledgeArticle = useCallback(
+    (id: string) => {
+      commit((prev) => ({
+        ...prev,
+        knowledgeArticles: (prev.knowledgeArticles ?? []).filter((a) => a.id !== id),
+      }));
+    },
+    [commit]
+  );
+
   const addTodo = useCallback(
     (todo: Omit<TodoItem, 'id' | 'createdAt' | 'completed'>) => {
       const nextTodo: TodoItem = {
@@ -814,6 +843,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deleteVocabItem,
         upsertKnowledgeSnippet,
         deleteKnowledgeSnippet,
+        upsertKnowledgeArticle,
+        deleteKnowledgeArticle,
         addTodo,
         updateTodo,
         toggleTodo,
