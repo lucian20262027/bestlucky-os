@@ -21,10 +21,10 @@ import {
 } from '@/lib/types';
 
 const ALLOWED_MODELS: Record<string, string> = {
-  'gemini-4-hydrogen': 'gemini-2.5-flash',
-  'gemini-4-argon': 'gemini-2.5-pro',
-  'gemini-2.5-flash': 'gemini-2.5-flash',
-  'gemini-2.5-pro': 'gemini-2.5-pro',
+  'gemini-4-hydrogen': 'gemini-3.8-flash',
+  'gemini-4-argon': 'gemini-4-argon',
+  'gemini-3.8-flash': 'gemini-3.8-flash',
+  'gemini-flash-latest': 'gemini-flash-latest',
 };
 
 function stripCodeFences(raw: string): string {
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
   const chosenModel: string =
     ALLOWED_MODELS[body.model ?? ''] ??
     ALLOWED_MODELS[process.env.GEMINI_MODEL ?? ''] ??
-    'gemini-2.5-flash';
+    'gemini-3.8-flash';
 
   const headerKey = req.headers.get('x-gemini-api-key')?.trim();
   const envKey = process.env.GEMINI_API_KEY?.trim();
