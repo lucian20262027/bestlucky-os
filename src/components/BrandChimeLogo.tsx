@@ -3,7 +3,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 
-type ChimePhase = 'idle' | 'nudge' | 'showing-time' | 'flipping-back';
+type ChimePhase =
+  | 'idle'
+  | 'nudge'
+  | 'time-in'
+  | 'break-icons'
+  | 'time-bounce'
+  | 'flipping-back';
 
 function formatHHMM(date: Date): string {
   const hh = String(date.getHours()).padStart(2, '0');
@@ -11,10 +17,92 @@ function formatHHMM(date: Date): string {
   return `${hh}:${mm}`;
 }
 
+function SteamingCoffeeIcon() {
+  return (
+    <span className="inline-flex items-center gap-0.5 animate-bl-pop-spring" title="喝口热咖啡">
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
+        {/* Animated rising steam */}
+        <path
+          d="M8.5 6.5C8.5 5 9.8 4.5 9.8 3"
+          stroke="#F59E0B"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          className="animate-bl-steam"
+        />
+        <path
+          d="M12.5 6C12.5 4.4 13.8 3.9 13.8 2.2"
+          stroke="#6E32F5"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          className="animate-bl-steam"
+          style={{ animationDelay: '220ms' }}
+        />
+        {/* Cup body */}
+        <path
+          d="M5 9.5H16V14.5C16 17.2614 13.7614 19.5 11 19.5H10C7.23858 19.5 5 17.2614 5 14.5V9.5Z"
+          fill="#6E32F5"
+        />
+        {/* Coffee crema top */}
+        <ellipse cx="10.5" cy="9.5" rx="5.5" ry="1.3" fill="#FDE68A" />
+        {/* Cup handle */}
+        <path
+          d="M16 11H17.5C18.8807 11 20 12.1193 20 13.5C20 14.8807 18.8807 16 17.5 16H16"
+          stroke="#6E32F5"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        />
+        {/* Saucer */}
+        <path d="M4 21H17" stroke="#F59E0B" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    </span>
+  );
+}
+
+function StretchingPersonIcon() {
+  return (
+    <span
+      className="inline-flex items-center animate-bl-pop-spring"
+      style={{ animationDelay: '140ms' }}
+      title="伸个懒腰放松一下"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        className="h-5 w-5 animate-bl-stretch"
+        aria-hidden="true"
+      >
+        {/* Head */}
+        <circle cx="12" cy="6.5" r="2.3" fill="#F59E0B" />
+        {/* Raised stretching arms */}
+        <path
+          d="M6.5 4.2C8.2 7.5 10.2 9.4 12 9.4C13.8 9.4 15.8 7.5 17.5 4.2"
+          stroke="#6E32F5"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* Torso */}
+        <path
+          d="M12 9.4V15.5"
+          stroke="#6E32F5"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+        />
+        {/* Legs */}
+        <path
+          d="M12 15.5L9.2 20.5M12 15.5L14.8 20.5"
+          stroke="#6E32F5"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      </svg>
+    </span>
+  );
+}
+
 export function BrandChimeLogo() {
   const [phase, setPhase] = useState<ChimePhase>('idle');
   const [timeText, setTimeText] = useState<string>('');
-  const [chimeTag, setChimeTag] = useState<string>('整点');
   const lastChimeKeyRef = useRef<string>('');
   const hasChimedOnceRef = useRef<boolean>(false);
   const timersRef = useRef<number[]>([]);
@@ -28,15 +116,15 @@ export function BrandChimeLogo() {
     (now = new Date()) => {
       clearTimers();
       hasChimedOnceRef.current = true;
-      const mins = now.getMinutes();
       setTimeText(formatHHMM(now));
-      setChimeTag(mins === 0 ? '整点' : mins === 30 ? '半点' : 'TIME');
       setPhase('nudge');
 
-      const t1 = window.setTimeout(() => setPhase('showing-time'), 420);
-      const t2 = window.setTimeout(() => setPhase('flipping-back'), 3450);
-      const t3 = window.setTimeout(() => setPhase('idle'), 3780);
-      timersRef.current = [t1, t2, t3];
+      const t1 = window.setTimeout(() => setPhase('time-in'), 380);
+      const t2 = window.setTimeout(() => setPhase('break-icons'), 1550);
+      const t3 = window.setTimeout(() => setPhase('time-bounce'), 3550);
+      const t4 = window.setTimeout(() => setPhase('flipping-back'), 4550);
+      const t5 = window.setTimeout(() => setPhase('idle'), 4880);
+      timersRef.current = [t1, t2, t3, t4, t5];
     },
     [clearTimers]
   );
@@ -62,7 +150,11 @@ export function BrandChimeLogo() {
     };
   }, [clearTimers, triggerChime]);
 
-  const isTimeVisible = phase === 'showing-time' || phase === 'flipping-back';
+  const isPillVisible =
+    phase === 'time-in' ||
+    phase === 'break-icons' ||
+    phase === 'time-bounce' ||
+    phase === 'flipping-back';
 
   return (
     <Link
@@ -117,28 +209,28 @@ export function BrandChimeLogo() {
         <rect x="14" y="48" width="36" height="2.4" rx="1.2" fill="url(#bl-nav-star-gold)" opacity="0.92" />
       </svg>
 
-      {isTimeVisible ? (
+      {isPillVisible ? (
         <div
-          className={`flex items-center gap-1.5 rounded-xl border border-[#D4C5FD] bg-gradient-to-r from-[#F5F0FF] to-[#FFFBEB] px-2.5 py-1 shadow-xs ${
-            phase === 'showing-time'
-              ? 'animate-bl-flip-in'
-              : 'animate-bl-flip-out'
+          className={`flex min-w-[78px] items-center justify-center rounded-xl border border-[#D4C5FD] bg-gradient-to-r from-[#F5F0FF] to-[#FFFBEB] px-3 py-1 shadow-xs ${
+            phase === 'flipping-back' ? 'animate-bl-flip-out' : 'animate-bl-flip-in'
           }`}
           data-testid="brand-chime-clock"
         >
-          <div
-            className={`flex items-center gap-1.5 ${
-              phase === 'showing-time' ? 'animate-bl-double-bounce' : ''
-            }`}
-          >
-            <span className="h-2 w-2 rounded-full bg-gradient-to-tr from-[#6E32F5] to-[#F59E0B] shadow-2xs" />
-            <span className="font-mono text-[14px] font-bold tracking-tight tabular-nums text-[#111118]">
+          {phase === 'break-icons' ? (
+            <div className="flex items-center gap-2" data-testid="brand-chime-icons">
+              <SteamingCoffeeIcon />
+              <StretchingPersonIcon />
+            </div>
+          ) : (
+            <span
+              className={`font-mono text-[15px] font-bold tracking-tight tabular-nums text-[#111118] ${
+                phase === 'time-bounce' ? 'animate-bl-single-bounce' : ''
+              }`}
+              data-testid="brand-chime-time"
+            >
               {timeText}
             </span>
-            <span className="rounded bg-[#6E32F5]/12 px-1 py-0.5 text-[9px] font-bold text-[#6E32F5]">
-              {chimeTag}
-            </span>
-          </div>
+          )}
         </div>
       ) : (
         <div
