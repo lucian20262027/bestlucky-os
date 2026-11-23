@@ -642,6 +642,9 @@ Return strict JSON:
 
       const interaction = await ai.interactions.create({
         model: chosenModel,
+        generation_config: {
+          thinking_level: 'low',
+        },
         input: `You are Lucian's personal AI Assistant (powered by Gemini) inside BestLucky OS.
 You can answer ANY question Lucian asks — general knowledge, coding, system design, product strategy, English phrasing, career advice, or interview prep — clearly, accurately, and conversationally.
 ${historyText ? `\nRecent Conversation:\n${historyText}\n` : ''}
@@ -678,14 +681,14 @@ Return strict JSON:
 
     if (action === 'analyze_article') {
       const title = String(payload.title ?? 'Uploaded Article').trim();
-      const content = String(payload.content ?? '').trim().slice(0, 8000);
+      const content = String(payload.content ?? '').trim().slice(0, 6000);
       if (!content) {
         return NextResponse.json({ error: 'Article content is required' }, { status: 400 });
       }
       const interaction = await ai.interactions.create({
         model: chosenModel,
         generation_config: {
-          thinking_level: 'minimal',
+          thinking_level: 'low',
         },
         input: `Analyze this article for a senior candidate preparing for FDE, FDPM, and AI PM interviews at top US AI companies.
 ${getLangInstruction(language)}
