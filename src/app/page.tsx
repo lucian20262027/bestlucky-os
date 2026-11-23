@@ -249,7 +249,7 @@ export default function DashboardPage() {
             badge="Feishu"
             accent="indigo"
             icon={<FileUp className="h-4 w-4" />}
-            href="/import"
+            href="/stories?tab=import"
           />
           <RareFolderCard
             title="Knowledge Hub"

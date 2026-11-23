@@ -441,16 +441,18 @@ export async function POST(req: NextRequest) {
     );
 
     const generateJsonWithFallback = async (
-      contents: string,
-      responseJsonSchema: Record<string, unknown>
+      contents: unknown,
+      responseJsonSchema: Record<string, unknown>,
+      systemInstruction?: string
     ) => {
       let lastError: unknown = null;
       for (const candidateModel of modelChain) {
         try {
           const response = await ai.models.generateContent({
             model: candidateModel,
-            contents,
+            contents: contents as string,
             config: {
+              ...(systemInstruction ? { systemInstruction } : {}),
               responseMimeType: 'application/json',
               responseJsonSchema,
             },
@@ -493,38 +495,30 @@ Return strict JSON:
         const mime = header.split(';')[0] || 'image/png';
         const base64 = imageDataUrl.slice(commaIdx + 1);
         inputPayload = [
-          { type: 'text', text: promptText },
-          { type: 'image', data: base64, mime_type: mime },
+          { text: promptText },
+          { inlineData: { data: base64, mimeType: mime } },
         ];
       }
 
-      const interaction = await ai.interactions.create({
-        model: chosenModel,
-        input: inputPayload as string,
-        response_mime_type: 'application/json',
-        response_format: {
-          type: 'object',
-          properties: {
-            company: { type: 'string' },
-            roleTitle: { type: 'string' },
-            extractedSkills: { type: 'array', items: { type: 'string' } },
-            coreCapabilities: { type: 'array', items: { type: 'string' } },
-            summary: { type: 'string' },
-            jdTextExtracted: { type: 'string' },
-          },
-          required: ['company', 'roleTitle', 'extractedSkills', 'coreCapabilities', 'summary'],
+      const { parsed, usedModel } = await generateJsonWithFallback(inputPayload, {
+        type: 'object',
+        properties: {
+          company: { type: 'string' },
+          roleTitle: { type: 'string' },
+          extractedSkills: { type: 'array', items: { type: 'string' } },
+          coreCapabilities: { type: 'array', items: { type: 'string' } },
+          summary: { type: 'string' },
+          jdTextExtracted: { type: 'string' },
         },
-        store: false,
+        required: ['company', 'roleTitle', 'extractedSkills', 'coreCapabilities', 'summary'],
       });
-      const raw = stripCodeFences(interaction.output_text ?? '');
-      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: JSON.parse(raw) });
+      return NextResponse.json({ mode: 'live_gemini', model: usedModel, data: parsed });
     }
 
     if (action === 'analyze_common_jds') {
       const jds = Array.isArray(payload.jds) ? payload.jds : [];
-      const interaction = await ai.interactions.create({
-        model: chosenModel,
-        input: `Analyze these ${jds.length} target Job Descriptions together and synthesize the COMMON skills and core capabilities required across them:
+      const { parsed, usedModel } = await generateJsonWithFallback(
+        `Analyze these ${jds.length} target Job Descriptions together and synthesize the COMMON skills and core capabilities required across them:
 ${JSON.stringify(jds)}
 ${getLangInstruction(language)}
 Return strict JSON:
@@ -532,8 +526,7 @@ Return strict JSON:
 - coreCapabilities: array of 4-6 overarching capabilities
 - prepPriorities: array of 3-4 actionable prep priorities
 - summary: 2-sentence Chinese synthesis`,
-        response_mime_type: 'application/json',
-        response_format: {
+        {
           type: 'object',
           properties: {
             commonSkills: {
@@ -552,11 +545,9 @@ Return strict JSON:
             summary: { type: 'string' },
           },
           required: ['commonSkills', 'coreCapabilities', 'prepPriorities', 'summary'],
-        },
-        store: false,
-      });
-      const raw = stripCodeFences(interaction.output_text ?? '');
-      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: JSON.parse(raw) });
+        }
+      );
+      return NextResponse.json({ mode: 'live_gemini', model: usedModel, data: parsed });
     }
 
     if (action === 'match_resume_jd') {
@@ -564,9 +555,8 @@ Return strict JSON:
       const jdText = String(payload.jdText ?? '');
       const resumeLabel = String(payload.resumeLabel ?? '');
       const resumeContent = String(payload.resumeContent ?? '');
-      const interaction = await ai.interactions.create({
-        model: chosenModel,
-        input: `Compare this Resume against the target JD and give concrete optimization recommendations.
+      const { parsed, usedModel } = await generateJsonWithFallback(
+        `Compare this Resume against the target JD and give concrete optimization recommendations.
 Target JD (${jdTitle}):
 """
 ${jdText}
@@ -582,8 +572,7 @@ Return strict JSON:
 - missingGaps: 2-4 specific missing keywords/experiences
 - optimizationTips: 3 actionable resume edits in Chinese
 - rewrittenBullets: 2 ready-to-paste senior-level English resume bullets tailored to this JD`,
-        response_mime_type: 'application/json',
-        response_format: {
+        {
           type: 'object',
           properties: {
             matchScore: { type: 'number' },
@@ -593,11 +582,9 @@ Return strict JSON:
             rewrittenBullets: { type: 'array', items: { type: 'string' } },
           },
           required: ['matchScore', 'matchedStrengths', 'missingGaps', 'optimizationTips', 'rewrittenBullets'],
-        },
-        store: false,
-      });
-      const raw = stripCodeFences(interaction.output_text ?? '');
-      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: JSON.parse(raw) });
+        }
+      );
+      return NextResponse.json({ mode: 'live_gemini', model: usedModel, data: parsed });
     }
 
     if (action === 'review_speech') {
@@ -611,9 +598,8 @@ Return strict JSON:
       const wpm = Math.round((words.length / durationSec) * 60);
       const fillerMatches = transcript.match(/\b(um+|uh+|like|basically|actually|you know|sort of)\b/gi) ?? [];
 
-      const interaction = await ai.interactions.create({
-        model: chosenModel,
-        input: `You are an executive interview speech coach for Lucian.
+      const { parsed, usedModel } = await generateJsonWithFallback(
+        `You are an executive interview speech coach for Lucian.
 Question: "${questionTitle}"
 Candidate's spoken transcript (${durationSec}s, ~${wpm} WPM):
 """
@@ -629,8 +615,7 @@ Return strict JSON:
 - feedback: 2-3 crisp sentences of actionable feedback
 - polishedVersion: crisp senior/staff-level English rewrite of their answer (2-4 sentences)
 - vocabUpgrades: 2-3 objects { insteadOf, use, reason } upgrading weak phrases to high-signal terms (e.g. deterministic, attribution, idempotent, provenance, observability)`,
-        response_mime_type: 'application/json',
-        response_format: {
+        {
           type: 'object',
           properties: {
             structureScore: { type: 'number' },
@@ -653,12 +638,9 @@ Return strict JSON:
             },
           },
           required: ['structureScore', 'clarityScore', 'fillerCount', 'wpm', 'feedback', 'polishedVersion', 'vocabUpgrades'],
-        },
-        store: false,
-      });
-      const raw = stripCodeFences(interaction.output_text ?? '');
-      const parsed = JSON.parse(raw);
-      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: parsed });
+        }
+      );
+      return NextResponse.json({ mode: 'live_gemini', model: usedModel, data: parsed });
     }
 
     if (action === 'dashboard_ask') {
@@ -762,17 +744,15 @@ Return strict JSON matching the schema:
       if (!word) {
         return NextResponse.json({ error: 'Word is required' }, { status: 400 });
       }
-      const interaction = await ai.interactions.create({
-        model: chosenModel,
-        input: `Analyze the English interview/tech term "${word}" for a bilingual candidate interviewing for FDE, FDPM, AI PM, PM, Operations, Program Manager, and Consulting roles.
+      const { parsed, usedModel } = await generateJsonWithFallback(
+        `Analyze the English interview/tech term "${word}" for a bilingual candidate interviewing for FDE, FDPM, AI PM, PM, Operations, Program Manager, and Consulting roles.
 Return strict JSON matching the schema:
 - phonetic: IPA plus an intuitive syllable-stress cue in parentheses, e.g. "/dɪˌtɜːrmɪˈnɪstɪk/ (di-TER-mi-NIS-tik)"
 - meaning: Crisp Simplified Chinese meaning + interview context in parentheses, e.g. "确定性的（给定相同输入必然产生相同输出，如编译器/Schema校验）"
 - example: One crisp, senior-level English interview sentence naturally using "${word}"
 - notes: Short Simplified Chinese pronunciation stress & memory tip, e.g. "重音在 -NIS- 上，常与 Probabilistic 成对出现。"
 - roles: 2-4 most relevant role IDs from ["fde", "fdpm", "ai-pm", "pm", "operations", "pgm", "consulting"]`,
-        response_mime_type: 'application/json',
-        response_format: {
+        {
           type: 'object',
           properties: {
             phonetic: { type: 'string' },
@@ -788,13 +768,10 @@ Return strict JSON matching the schema:
             },
           },
           required: ['phonetic', 'meaning', 'example', 'notes', 'roles'],
-        },
-        store: false,
-      });
+        }
+      );
 
-      const raw = stripCodeFences(interaction.output_text ?? '');
-      const parsed = JSON.parse(raw);
-      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: parsed });
+      return NextResponse.json({ mode: 'live_gemini', model: usedModel, data: parsed });
     }
 
     if (action === 'interviewer_turn') {
@@ -831,11 +808,9 @@ Rules:
         .map((m) => `${m.sender.toUpperCase()}: ${m.text}`)
         .join('\n\n');
 
-      const interaction = await ai.interactions.create({
-        model: chosenModel,
-        system_instruction: systemInstruction,
-        input: `Transcript so far:\n${transcript}\n\nCandidate Scratchpad:\n${scratchpad.slice(0, 1500)}\n\nCandidate Visual Diagram:\n${diagramSummary}\n\nRespond with JSON: {"stageLabel": "short 2-4 word stage", "reply": "your spoken interviewer turn"}`,
-        response_format: {
+      const { parsed, usedModel } = await generateJsonWithFallback(
+        `Transcript so far:\n${transcript}\n\nCandidate Scratchpad:\n${scratchpad.slice(0, 1500)}\n\nCandidate Visual Diagram:\n${diagramSummary}\n\nRespond with JSON: {"stageLabel": "short 2-4 word stage", "reply": "your spoken interviewer turn"}`,
+        {
           type: 'object',
           properties: {
             stageLabel: { type: 'string' },
@@ -843,12 +818,10 @@ Rules:
           },
           required: ['stageLabel', 'reply'],
         },
-        store: false,
-      });
+        systemInstruction
+      );
 
-      const raw = stripCodeFences(interaction.output_text ?? '');
-      const parsed = JSON.parse(raw) as { stageLabel: string; reply: string };
-      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: parsed });
+      return NextResponse.json({ mode: 'live_gemini', model: usedModel, data: parsed });
     }
 
     if (action === 'evaluate_session') {
@@ -879,11 +852,9 @@ ${getLangInstruction(language)}`;
           ? `Nodes: ${diagramNodes.map((n) => `${n.label}(${n.kind})`).join(', ')} | Edges: ${diagramEdges.length}`
           : 'No diagram blocks created.';
 
-      const interaction = await ai.interactions.create({
-        model: chosenModel,
-        system_instruction: systemInstruction,
-        input: `Question: ${question.title}\nPrompt: ${question.prompt}\nStrong Hire Signals: ${question.strongHireSignals.join('; ')}\nRed Flags: ${question.redFlags.join('; ')}\n\nTranscript:\n${transcript}\n\nScratchpad:\n${scratchpad}\n\nDiagram: ${diagramSummary}\n\nReturn strict JSON matching the schema.`,
-        response_format: {
+      const { parsed, usedModel } = await generateJsonWithFallback(
+        `Question: ${question.title}\nPrompt: ${question.prompt}\nStrong Hire Signals: ${question.strongHireSignals.join('; ')}\nRed Flags: ${question.redFlags.join('; ')}\n\nTranscript:\n${transcript}\n\nScratchpad:\n${scratchpad}\n\nDiagram: ${diagramSummary}\n\nReturn strict JSON matching the schema.`,
+        {
           type: 'object',
           properties: {
             overallScore: { type: 'number' },
@@ -940,13 +911,12 @@ ${getLangInstruction(language)}`;
             'recommendedDrillFocus',
           ],
         },
-        store: false,
-      });
+        systemInstruction
+      );
 
-      const raw = stripCodeFences(interaction.output_text ?? '');
-      const parsed = JSON.parse(raw);
-      parsed.engineMode = 'live_gemini';
-      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: parsed });
+      const evalObj = parsed as Record<string, unknown>;
+      evalObj.engineMode = 'live_gemini';
+      return NextResponse.json({ mode: 'live_gemini', model: usedModel, data: evalObj });
     }
 
     if (action === 'generate_loop') {
@@ -961,11 +931,9 @@ ${getLangInstruction(language)}`;
 Compare the candidate's resume against the pasted Job Description, compute an honest matchScore (0-100), list specific matchedStrengths, capabilityGaps, a 3-phase prepPlan, and 5 realistic, sharp custom interview questions tailored specifically to this company + JD + candidate background.
 ${getLangInstruction(language)}`;
 
-      const interaction = await ai.interactions.create({
-        model: chosenModel,
-        system_instruction: systemInstruction,
-        input: `Target Company: ${company}\nRole Track: ${roleCfg.label}\nPrimary Focus Round: ${round}\n\nCandidate Resume:\n${resumeText.slice(0, 4000)}\n\nTarget Job Description:\n${jdText.slice(0, 4000)}\n\nReturn strict JSON with matchScore, matchedStrengths, capabilityGaps, prepPlan (3 items with phase, focus, deliverables[]), and questions (5 items each with title, prompt, promptZhHint, frameworkSteps[], strongHireSignals[], redFlags[], followUpProbes[], difficulty ['core'|'senior'|'staff'], timeLimitMin).`,
-        response_format: {
+      const { parsed: parsedLoop, usedModel } = await generateJsonWithFallback(
+        `Target Company: ${company}\nRole Track: ${roleCfg.label}\nPrimary Focus Round: ${round}\n\nCandidate Resume:\n${resumeText.slice(0, 4000)}\n\nTarget Job Description:\n${jdText.slice(0, 4000)}\n\nReturn strict JSON with matchScore, matchedStrengths, capabilityGaps, prepPlan (3 items with phase, focus, deliverables[]), and questions (5 items each with title, prompt, promptZhHint, frameworkSteps[], strongHireSignals[], redFlags[], followUpProbes[], difficulty ['core'|'senior'|'staff'], timeLimitMin).`,
+        {
           type: 'object',
           properties: {
             matchScore: { type: 'number' },
@@ -1014,11 +982,10 @@ ${getLangInstruction(language)}`;
           },
           required: ['matchScore', 'matchedStrengths', 'capabilityGaps', 'prepPlan', 'questions'],
         },
-        store: false,
-      });
+        systemInstruction
+      );
 
-      const raw = stripCodeFences(interaction.output_text ?? '');
-      const parsed = JSON.parse(raw) as {
+      const parsed = parsedLoop as {
         matchScore: number;
         matchedStrengths: string[];
         capabilityGaps: string[];
@@ -1061,7 +1028,7 @@ ${getLangInstruction(language)}`;
         createdAt: nowISO,
       };
 
-      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: plan });
+      return NextResponse.json({ mode: 'live_gemini', model: usedModel, data: plan });
     }
 
     return NextResponse.json({ error: 'Unsupported action' }, { status: 400 });

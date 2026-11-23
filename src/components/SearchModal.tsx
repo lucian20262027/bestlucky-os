@@ -291,7 +291,7 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
                 {results.libraryHits.map((lib) => (
                   <Link
                     key={lib.id}
-                    href="/library"
+                    href="/stories?tab=videos"
                     onClick={onClose}
                     className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs hover:bg-[var(--accent-soft)]/70"
                   >

@@ -314,7 +314,10 @@ export function parseLarkMarkdownToItems(
         role: detectedRole,
         round: inferRoundFromText(`${b.heading}\n${promptText}`),
         companyStyle,
-        prompt: b.heading === promptText ? b.heading : `${b.heading}\n\n${promptText}`.slice(0, 600),
+        prompt:
+          b.heading === promptText || promptText === answerText
+            ? b.heading
+            : `${b.heading}\n\n${promptText}`.slice(0, 2000),
         answer: answerText,
         notes: '',
         videoUrl,

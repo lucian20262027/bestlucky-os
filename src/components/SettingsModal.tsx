@@ -74,7 +74,7 @@ export function SettingsModal() {
               Workspace & AI Engine Settings
             </h2>
             <p className="text-xs text-[var(--ink-muted)]">
-              配置 Gemini 4 API、语言模式与本地数据备份（零账号门槛，数据保存在本地浏览器）
+              配置 Gemini API、语言模式与云端/本地数据备份（自动同步至 Neon Postgres）
             </p>
           </div>
           <button
