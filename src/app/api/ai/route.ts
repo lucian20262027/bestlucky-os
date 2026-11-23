@@ -430,6 +430,39 @@ export async function POST(req: NextRequest) {
 
   try {
     const ai = new GoogleGenAI({ apiKey, apiVersion: 'v1beta' });
+    const modelChain = Array.from(
+      new Set([
+        chosenModel,
+        'gemini-4-hydrogen',
+        'gemini-3.8-flash',
+        'gemini-3.7-flash',
+        'gemini-flash-latest',
+      ])
+    );
+
+    const generateJsonWithFallback = async (
+      contents: string,
+      responseJsonSchema: Record<string, unknown>
+    ) => {
+      let lastError: unknown = null;
+      for (const candidateModel of modelChain) {
+        try {
+          const response = await ai.models.generateContent({
+            model: candidateModel,
+            contents,
+            config: {
+              responseMimeType: 'application/json',
+              responseJsonSchema,
+            },
+          });
+          const raw = stripCodeFences(response.text ?? '');
+          return { parsed: JSON.parse(raw), usedModel: candidateModel };
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      throw lastError ?? new Error('All Gemini models failed');
+    };
 
     if (action === 'analyze_jd') {
       const jdText = String(payload.jdText ?? '').trim();
@@ -640,9 +673,8 @@ Return strict JSON:
         .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`)
         .join('\n');
 
-      const response = await ai.models.generateContent({
-        model: chosenModel,
-        contents: `You are Lucian's personal AI Assistant (powered by Gemini) inside BestLucky OS.
+      const { parsed, usedModel } = await generateJsonWithFallback(
+        `You are Lucian's personal AI Assistant (powered by Gemini) inside BestLucky OS.
 You can answer ANY question Lucian asks — general knowledge, coding, system design, product strategy, English phrasing, career advice, or interview prep — clearly, accurately, and conversationally.
 ${historyText ? `\nRecent Conversation:\n${historyText}\n` : ''}
 Current User Message: "${q}"
@@ -650,31 +682,26 @@ ${getLangInstruction(language)}
 Return strict JSON:
 - answer: Helpful, direct, well-structured answer addressing the user's exact question (no generic boilerplate).
 - links: 0 to 2 relevant BestLucky OS links ONLY if directly helpful, chosen from: [{"label": "...", "href": "/questions"}, {"label": "...", "href": "/customizer"}, {"label": "...", "href": "/knowledge"}, {"label": "...", "href": "/frameworks"}, {"label": "...", "href": "/stories"}, {"label": "...", "href": "/practice"}]; otherwise return [].`,
-        config: {
-          responseMimeType: 'application/json',
-          responseJsonSchema: {
-            type: 'object',
-            properties: {
-              answer: { type: 'string' },
-              links: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    label: { type: 'string' },
-                    href: { type: 'string' },
-                  },
-                  required: ['label', 'href'],
+        {
+          type: 'object',
+          properties: {
+            answer: { type: 'string' },
+            links: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  label: { type: 'string' },
+                  href: { type: 'string' },
                 },
+                required: ['label', 'href'],
               },
             },
-            required: ['answer', 'links'],
           },
-        },
-      });
-      const raw = stripCodeFences(response.text ?? '');
-      const parsed = JSON.parse(raw);
-      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: parsed });
+          required: ['answer', 'links'],
+        }
+      );
+      return NextResponse.json({ mode: 'live_gemini', model: usedModel, data: parsed });
     }
 
     if (action === 'analyze_article') {
@@ -683,9 +710,8 @@ Return strict JSON:
       if (!content) {
         return NextResponse.json({ error: 'Article content is required' }, { status: 400 });
       }
-      const response = await ai.models.generateContent({
-        model: chosenModel,
-        contents: `Analyze this article for a senior candidate preparing for FDE, FDPM, and AI PM interviews at top US AI companies.
+      const { parsed, usedModel } = await generateJsonWithFallback(
+        `Analyze this article for a senior candidate preparing for FDE, FDPM, and AI PM interviews at top US AI companies.
 ${getLangInstruction(language)}
 
 Article Title: ${title}
@@ -704,36 +730,31 @@ Return strict JSON matching the schema:
   - pitfalls: 2 common pitfalls or traps candidates fall into when discussing this topic (Simplified Chinese).
   - deepFollowUps: 2 to 3 deeper Bar-Raiser follow-up questions & adjacent topics to expand on.
 - tags: 3 to 5 concise topic tags.`,
-        config: {
-          responseMimeType: 'application/json',
-          responseJsonSchema: {
-            type: 'object',
-            properties: {
-              summary: { type: 'string' },
-              takeaways: { type: 'array', items: { type: 'string' } },
-              unifiedAngle: { type: 'string' },
-              roleNuance: { type: 'string' },
-              practicalUse: {
-                type: 'object',
-                properties: {
-                  scenarios: { type: 'array', items: { type: 'string' } },
-                  interviewQuestions: { type: 'array', items: { type: 'string' } },
-                  spokenAnswer: { type: 'string' },
-                  pitfalls: { type: 'array', items: { type: 'string' } },
-                  deepFollowUps: { type: 'array', items: { type: 'string' } },
-                },
-                required: ['scenarios', 'interviewQuestions', 'spokenAnswer', 'pitfalls', 'deepFollowUps'],
+        {
+          type: 'object',
+          properties: {
+            summary: { type: 'string' },
+            takeaways: { type: 'array', items: { type: 'string' } },
+            unifiedAngle: { type: 'string' },
+            roleNuance: { type: 'string' },
+            practicalUse: {
+              type: 'object',
+              properties: {
+                scenarios: { type: 'array', items: { type: 'string' } },
+                interviewQuestions: { type: 'array', items: { type: 'string' } },
+                spokenAnswer: { type: 'string' },
+                pitfalls: { type: 'array', items: { type: 'string' } },
+                deepFollowUps: { type: 'array', items: { type: 'string' } },
               },
-              tags: { type: 'array', items: { type: 'string' } },
+              required: ['scenarios', 'interviewQuestions', 'spokenAnswer', 'pitfalls', 'deepFollowUps'],
             },
-            required: ['summary', 'takeaways', 'unifiedAngle', 'roleNuance', 'practicalUse', 'tags'],
+            tags: { type: 'array', items: { type: 'string' } },
           },
-        },
-      });
+          required: ['summary', 'takeaways', 'unifiedAngle', 'roleNuance', 'practicalUse', 'tags'],
+        }
+      );
 
-      const raw = stripCodeFences(response.text ?? '');
-      const parsed = JSON.parse(raw);
-      return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: parsed });
+      return NextResponse.json({ mode: 'live_gemini', model: usedModel, data: parsed });
     }
 
     if (action === 'analyze_vocab') {
