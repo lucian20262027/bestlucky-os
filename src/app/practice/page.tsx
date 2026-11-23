@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Layers,
   Mic,
@@ -19,8 +19,9 @@ import { RoleTrack } from '@/lib/types';
 
 type PracticeTab = 'voice' | 'mock';
 
-export default function PracticeLauncherPage() {
+function PracticeLauncherContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { state } = useApp();
   const [activeTab, setActiveTab] = useState<PracticeTab>('voice');
   const [selectedRole, setSelectedRole] = useState<RoleTrack | 'all'>('all');
@@ -33,6 +34,20 @@ export default function PracticeLauncherPage() {
   const [customTopic, setCustomTopic] = useState(
     'Tell me about a complex AI or cross-functional system you shipped from 0 to 1.'
   );
+  const [initialDraft, setInitialDraft] = useState('');
+
+  useEffect(() => {
+    const topicParam = searchParams.get('topic');
+    const draftParam = searchParams.get('draft');
+    if (topicParam) {
+      setActiveTab('voice');
+      setVoiceQuestionId('custom');
+      setCustomTopic(topicParam);
+    }
+    if (draftParam) {
+      setInitialDraft(draftParam);
+    }
+  }, [searchParams]);
 
   const selectedVoiceQuestion = useMemo(
     () => allQuestions.find((q) => q.id === voiceQuestionId) ?? null,
@@ -215,6 +230,7 @@ export default function PracticeLauncherPage() {
             questionTitle={
               selectedVoiceQuestion ? selectedVoiceQuestion.title : customTopic || 'Custom Speech Drill'
             }
+            initialTranscript={initialDraft}
           />
         </div>
       )}
@@ -339,5 +355,19 @@ export default function PracticeLauncherPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function PracticeLauncherPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-[60vh] items-center justify-center text-sm text-[var(--ink-muted)]">
+          Loading Practice Studio...
+        </div>
+      }
+    >
+      <PracticeLauncherContent />
+    </Suspense>
   );
 }

@@ -242,6 +242,7 @@ export interface QuestionUserNotes {
   titleStyle?: TextStyleConfig;
   answerStyle?: TextStyleConfig;
   customBlocks?: CustomAnswerBlock[];
+  linkedStoryIds?: string[];
   published?: boolean;
   updatedAt: string;
 }
@@ -390,6 +391,14 @@ export interface PostInterviewDebrief {
   nextAction: string;
 }
 
+export interface OfferCompDetails {
+  base: number;
+  annualEquity: number;
+  signOn: number;
+  bonusPct: number;
+  notes?: string;
+}
+
 export interface JobApplication {
   id: string;
   company: string;
@@ -398,6 +407,10 @@ export interface JobApplication {
   stage: PipelineStage;
   jdUrl?: string;
   resumeVersion?: string;
+  linkedJdId?: string;
+  linkedResumeId?: string;
+  reverseQuestions?: string[];
+  offerComp?: OfferCompDetails;
   nextInterviewDate?: string;
   recruiterName?: string;
   notes?: string;

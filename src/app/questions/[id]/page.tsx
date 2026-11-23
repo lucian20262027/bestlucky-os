@@ -950,6 +950,93 @@ ${question.redFlags.map((r) => `- Avoid: ${r}`).join('\n')}`;
             </div>
           </div>
 
+          {/* Linked STAR+L Stories */}
+          <div className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-[0_1px_2px_rgba(16,16,24,0.03)]">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-[#6E32F5]">
+                Linked STAR+L Stories ({(notes.linkedStoryIds ?? []).length})
+              </h3>
+              <Link
+                href="/stories"
+                className="text-[11px] font-medium text-[#848494] hover:text-[#6E32F5]"
+              >
+                Story Bank →
+              </Link>
+            </div>
+            <select
+              value=""
+              onChange={(e) => {
+                const sid = e.target.value;
+                if (!sid) return;
+                const current = notes.linkedStoryIds ?? [];
+                if (!current.includes(sid)) {
+                  updateQuestionNotes(question.id, {
+                    linkedStoryIds: [...current, sid],
+                  });
+                }
+              }}
+              className="mt-2.5 w-full rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-3 py-2 text-xs text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none"
+            >
+              <option value="">+ 挂载一个 STAR+L 故事到此题...</option>
+              {state.stories
+                .filter((s) => !(notes.linkedStoryIds ?? []).includes(s.id))
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title}
+                  </option>
+                ))}
+            </select>
+
+            {(notes.linkedStoryIds ?? []).length > 0 && (
+              <div className="mt-3 space-y-2.5">
+                {(notes.linkedStoryIds ?? []).map((sid) => {
+                  const st = state.stories.find((item) => item.id === sid);
+                  if (!st) return null;
+                  return (
+                    <div
+                      key={sid}
+                      className="rounded-xl border border-[#D4C5FD]/60 bg-[#F9F6FF]/60 p-3 text-xs"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-semibold text-[#111118]">{st.title}</div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateQuestionNotes(question.id, {
+                              linkedStoryIds: (notes.linkedStoryIds ?? []).filter(
+                                (x) => x !== sid
+                              ),
+                            })
+                          }
+                          className="text-[11px] text-[#848494] hover:text-rose-600"
+                          title="取消关联"
+                        >
+                          移除
+                        </button>
+                      </div>
+                      {st.metrics.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {st.metrics.slice(0, 3).map((m, idx) => (
+                            <span
+                              key={idx}
+                              className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-700"
+                            >
+                              {m}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <p className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-[#525260]">
+                        <span className="font-semibold text-[#6E32F5]">Result:</span>{' '}
+                        {st.result || st.action}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <div className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-[0_1px_2px_rgba(16,16,24,0.03)]">
             <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-800">
               <CheckCircle2 className="h-3.5 w-3.5" />

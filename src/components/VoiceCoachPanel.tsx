@@ -17,6 +17,7 @@ interface SpeechReviewResult {
 interface VoiceCoachPanelProps {
   questionTitle: string;
   compact?: boolean;
+  initialTranscript?: string;
 }
 
 interface SpeechRecognitionInstance {
@@ -30,11 +31,21 @@ interface SpeechRecognitionInstance {
   stop: () => void;
 }
 
-export function VoiceCoachPanel({ questionTitle, compact = false }: VoiceCoachPanelProps) {
+export function VoiceCoachPanel({
+  questionTitle,
+  compact = false,
+  initialTranscript = '',
+}: VoiceCoachPanelProps) {
   const { state } = useApp();
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
-  const [transcript, setTranscript] = useState('');
+  const [transcript, setTranscript] = useState(initialTranscript);
+
+  useEffect(() => {
+    if (initialTranscript) {
+      setTranscript(initialTranscript);
+    }
+  }, [initialTranscript]);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [review, setReview] = useState<SpeechReviewResult | null>(null);

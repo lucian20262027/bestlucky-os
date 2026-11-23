@@ -1,21 +1,31 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   Briefcase,
   Calendar,
   ClipboardCheck,
+  DollarSign,
   Edit3,
   ExternalLink,
   FileText,
+  Mic,
   Plus,
+  Shield,
   Trash2,
   X,
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import { roleBadgeClasses } from '@/lib/helpers';
 import { ROLE_LIST, ROLES_BY_ID } from '@/lib/roles';
-import { JobApplication, PipelineStage, PostInterviewDebrief, RoleTrack } from '@/lib/types';
+import {
+  JobApplication,
+  OfferCompDetails,
+  PipelineStage,
+  PostInterviewDebrief,
+  RoleTrack,
+} from '@/lib/types';
 
 const STAGES: Array<{ id: PipelineStage; label: string; accent: string }> = [
   { id: 'wishlist', label: 'Wishlist', accent: 'bg-slate-100 text-slate-700' },
@@ -28,8 +38,11 @@ const STAGES: Array<{ id: PipelineStage; label: string; accent: string }> = [
 
 export default function JobPipelinePage() {
   const { state, upsertApplication, deleteApplication } = useApp();
+  const [pipelineTab, setPipelineTab] = useState<'board' | 'offers'>('board');
   const [editingApp, setEditingApp] = useState<JobApplication | null>(null);
   const [debriefTarget, setDebriefTarget] = useState<JobApplication | null>(null);
+  const [warRoomTarget, setWarRoomTarget] = useState<JobApplication | null>(null);
+  const [reverseQDraft, setReverseQDraft] = useState('');
   const [newDebrief, setNewDebrief] = useState<PostInterviewDebrief>({
     roundName: '',
     dateISO: new Date().toISOString().slice(0, 10),
@@ -38,6 +51,59 @@ export default function JobPipelinePage() {
     followUpProbes: '',
     nextAction: '',
   });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setEditingApp(null);
+        setDebriefTarget(null);
+        setWarRoomTarget(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const offerCandidates = useMemo(() => {
+    const offers = state.applications.filter(
+      (a) => a.stage === 'offer' || Boolean(a.offerComp)
+    );
+    return offers.length > 0 ? offers : state.applications.slice(0, 3);
+  }, [state.applications]);
+
+  const updateOfferField = (
+    app: JobApplication,
+    field: keyof OfferCompDetails,
+    value: number | string
+  ) => {
+    const cur: OfferCompDetails = app.offerComp ?? {
+      base: 220000,
+      annualEquity: 120000,
+      signOn: 30000,
+      bonusPct: 15,
+    };
+    upsertApplication({
+      ...app,
+      offerComp: {
+        ...cur,
+        [field]: value,
+      },
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const addReverseQuestion = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!warRoomTarget || !reverseQDraft.trim()) return;
+    const updated: JobApplication = {
+      ...warRoomTarget,
+      reverseQuestions: [...(warRoomTarget.reverseQuestions ?? []), reverseQDraft.trim()],
+      updatedAt: new Date().toISOString(),
+    };
+    upsertApplication(updated);
+    setWarRoomTarget(updated);
+    setReverseQDraft('');
+  };
 
   const openNewApp = (stage: PipelineStage = 'applied') => {
     setEditingApp({
@@ -104,17 +170,46 @@ export default function JobPipelinePage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => openNewApp('applied')}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-[#6E32F5] px-4 py-2.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-[#5B24D6]"
-        >
-          <Plus className="h-4 w-4" />
-          Add Application
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-xl border border-[#ECECF2] bg-white p-1">
+            <button
+              type="button"
+              onClick={() => setPipelineTab('board')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                pipelineTab === 'board'
+                  ? 'bg-[#6E32F5] text-white'
+                  : 'text-[#5E5E6E] hover:text-[#111118]'
+              }`}
+            >
+              <Shield className="h-3.5 w-3.5" />
+              投递漏斗 &amp; 备战室
+            </button>
+            <button
+              type="button"
+              onClick={() => setPipelineTab('offers')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                pipelineTab === 'offers'
+                  ? 'bg-[#6E32F5] text-white'
+                  : 'text-[#5E5E6E] hover:text-[#111118]'
+              }`}
+            >
+              <DollarSign className="h-3.5 w-3.5" />
+              Offer 薪资对比 (4-Year TC)
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => openNewApp('applied')}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#6E32F5] px-4 py-2 text-xs font-semibold text-white shadow-2xs transition hover:bg-[#5B24D6]"
+          >
+            <Plus className="h-4 w-4" />
+            Add Application
+          </button>
+        </div>
       </div>
 
       {/* Stage Columns */}
+      {pipelineTab === 'board' && (
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {STAGES.map((stage) => {
           const items = state.applications.filter((a) => a.stage === stage.id);
@@ -245,6 +340,14 @@ export default function JobPipelinePage() {
                           )}
                           <button
                             type="button"
+                            onClick={() => setWarRoomTarget(app)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-[#D4C5FD] bg-[#F9F6FF] px-2.5 py-1 text-[11px] font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]"
+                          >
+                            <Shield className="h-3 w-3" />
+                            备战室
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setDebriefTarget(app)}
                             className="inline-flex items-center gap-1 rounded-lg bg-[#F3ECFF] px-2.5 py-1 text-[11px] font-semibold text-[#6E32F5] hover:bg-[#6E32F5] hover:text-white"
                           >
@@ -261,6 +364,129 @@ export default function JobPipelinePage() {
           );
         })}
       </div>
+      )}
+
+      {/* TAB 2: 4-Year Total Comp Offer Comparator */}
+      {pipelineTab === 'offers' && (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-2xs">
+            <h2 className="text-sm font-semibold text-[#111118]">
+              4-Year Total Compensation (TC) 对比计算器
+            </h2>
+            <p className="mt-1 text-xs text-[#848494]">
+              自动包含所有 Offer 阶段公司（若暂无 Offer，默认展示前 3 家目标公司供预演），实时计算 Year 1 与 4-Year 总包。
+            </p>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {offerCandidates.map((app) => {
+                const comp = app.offerComp ?? {
+                  base: 220000,
+                  annualEquity: 120000,
+                  signOn: 30000,
+                  bonusPct: 15,
+                };
+                const annualBonus = Math.round((comp.base * comp.bonusPct) / 100);
+                const recurringAnnual = comp.base + annualBonus + comp.annualEquity;
+                const year1Tc = recurringAnnual + comp.signOn;
+                const total4Yr = recurringAnnual * 4 + comp.signOn;
+
+                return (
+                  <div
+                    key={app.id}
+                    className="rounded-2xl border border-[#ECECF2] bg-[#FAFAFC] p-4 space-y-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[#111118]">{app.company}</h3>
+                        <p className="text-[11px] text-[#5E5E6E]">{app.roleTitle}</p>
+                      </div>
+                      <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 font-mono text-xs font-bold text-emerald-700">
+                        Y1 \${Math.round(year1Tc / 1000)}k
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <label className="space-y-1">
+                        <span className="text-[10px] font-semibold uppercase text-[#848494]">
+                          Base (\$/yr)
+                        </span>
+                        <input
+                          type="number"
+                          value={comp.base}
+                          onChange={(e) =>
+                            updateOfferField(app, 'base', Number(e.target.value) || 0)
+                          }
+                          className="w-full rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 font-mono text-xs"
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[10px] font-semibold uppercase text-[#848494]">
+                          Equity (\$/yr)
+                        </span>
+                        <input
+                          type="number"
+                          value={comp.annualEquity}
+                          onChange={(e) =>
+                            updateOfferField(app, 'annualEquity', Number(e.target.value) || 0)
+                          }
+                          className="w-full rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 font-mono text-xs"
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[10px] font-semibold uppercase text-[#848494]">
+                          Sign-on (\$)
+                        </span>
+                        <input
+                          type="number"
+                          value={comp.signOn}
+                          onChange={(e) =>
+                            updateOfferField(app, 'signOn', Number(e.target.value) || 0)
+                          }
+                          className="w-full rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 font-mono text-xs"
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[10px] font-semibold uppercase text-[#848494]">
+                          Bonus (%)
+                        </span>
+                        <input
+                          type="number"
+                          value={comp.bonusPct}
+                          onChange={(e) =>
+                            updateOfferField(app, 'bonusPct', Number(e.target.value) || 0)
+                          }
+                          className="w-full rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 font-mono text-xs"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="space-y-1 rounded-xl border border-[#ECECF2] bg-white p-3 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-[#848494]">Year 1 Total Comp:</span>
+                        <span className="font-mono font-semibold text-[#111118]">
+                          \${year1Tc.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#848494]">Yr 2–4 Recurring/yr:</span>
+                        <span className="font-mono font-semibold text-[#111118]">
+                          \${recurringAnnual.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-t border-[#ECECF2] pt-1.5">
+                        <span className="font-semibold text-[#6E32F5]">4-Year Total Package:</span>
+                        <span className="font-mono font-bold text-[#6E32F5]">
+                          \${total4Yr.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add / Edit Application Modal */}
       {editingApp && (
@@ -540,6 +766,185 @@ export default function JobPipelinePage() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Company War Room Modal */}
+      {warRoomTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#ECECF2] pb-3">
+              <div>
+                <h3 className="text-base font-semibold text-[#111118]">
+                  ⚔️ 公司备战室 (War Room) · {warRoomTarget.company}
+                </h3>
+                <p className="text-xs text-[#848494]">
+                  {warRoomTarget.roleTitle} · 一屏关联 JD、匹配简历版本与专属反问问题 (Reverse Q&amp;A)
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWarRoomTarget(null)}
+                className="rounded-lg p-1 text-[#848494]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Linked JD & Resume */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-3">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-[#848494]">
+                  关联目标 JD (来自 JD Study Plan)
+                </label>
+                <select
+                  value={warRoomTarget.linkedJdId ?? ''}
+                  onChange={(e) => {
+                    const updated: JobApplication = {
+                      ...warRoomTarget,
+                      linkedJdId: e.target.value || undefined,
+                      updatedAt: new Date().toISOString(),
+                    };
+                    upsertApplication(updated);
+                    setWarRoomTarget(updated);
+                  }}
+                  className="mt-1.5 w-full rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs"
+                >
+                  <option value="">选择关联 JD...</option>
+                  {state.savedJDs.map((jd) => (
+                    <option key={jd.id} value={jd.id}>
+                      {jd.company} — {jd.roleTitle}
+                    </option>
+                  ))}
+                </select>
+                {(() => {
+                  const linkedJd = state.savedJDs.find((j) => j.id === warRoomTarget.linkedJdId);
+                  if (!linkedJd) return null;
+                  return (
+                    <div className="mt-2 space-y-1 text-[11px] text-[#5E5E6E]">
+                      <p className="line-clamp-2">{linkedJd.summary}</p>
+                      <div className="flex flex-wrap gap-1">
+                        {linkedJd.extractedSkills.slice(0, 4).map((sk) => (
+                          <span
+                            key={sk}
+                            className="rounded bg-[#F3ECFF] px-1.5 py-0.5 text-[10px] font-medium text-[#6E32F5]"
+                          >
+                            {sk}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-3">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-[#848494]">
+                  关联简历版本 (来自简历库)
+                </label>
+                <select
+                  value={warRoomTarget.linkedResumeId ?? ''}
+                  onChange={(e) => {
+                    const found = state.resumeProfiles.find((r) => r.id === e.target.value);
+                    const updated: JobApplication = {
+                      ...warRoomTarget,
+                      linkedResumeId: e.target.value || undefined,
+                      resumeVersion: found ? found.fileName || found.label : warRoomTarget.resumeVersion,
+                      updatedAt: new Date().toISOString(),
+                    };
+                    upsertApplication(updated);
+                    setWarRoomTarget(updated);
+                  }}
+                  className="mt-1.5 w-full rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs"
+                >
+                  <option value="">选择简历版本...</option>
+                  {state.resumeProfiles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      [{r.track}] {r.label}
+                    </option>
+                  ))}
+                </select>
+                {(() => {
+                  const linkedRes = state.resumeProfiles.find(
+                    (r) => r.id === warRoomTarget.linkedResumeId
+                  );
+                  if (!linkedRes) return null;
+                  return (
+                    <p className="mt-2 line-clamp-3 text-[11px] leading-relaxed text-[#5E5E6E]">
+                      {linkedRes.content}
+                    </p>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Reverse Q&A */}
+            <div className="rounded-xl border border-[#ECECF2] bg-white p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-[#111118]">
+                  公司专属反问问题 (Reverse Q&amp;A)
+                </span>
+                <Link
+                  href={`/practice?topic=${encodeURIComponent(
+                    `Why ${warRoomTarget.company} & ${warRoomTarget.roleTitle}?`
+                  )}`}
+                  className="inline-flex items-center gap-1 rounded-lg bg-[#6E32F5] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#5B24D6]"
+                >
+                  <Mic className="h-3 w-3" />
+                  针对这家练 1 题
+                </Link>
+              </div>
+
+              <form onSubmit={addReverseQuestion} className="flex gap-2">
+                <input
+                  value={reverseQDraft}
+                  onChange={(e) => setReverseQDraft(e.target.value)}
+                  placeholder="添加要反问 HM / 面试官的问题..."
+                  className="flex-1 rounded-lg border border-[#ECECF2] px-3 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="rounded-lg bg-[#111118] px-3 py-1.5 text-xs font-semibold text-white"
+                >
+                  添加
+                </button>
+              </form>
+
+              <ul className="space-y-1.5">
+                {(warRoomTarget.reverseQuestions ?? []).length === 0 ? (
+                  <li className="text-[11px] text-[#848494]">
+                    还没有添加反问问题 — 建议准备 3 个分别针对技术债/路线图、成功指标和团队节奏的问题。
+                  </li>
+                ) : (
+                  (warRoomTarget.reverseQuestions ?? []).map((rq, idx) => (
+                    <li
+                      key={idx}
+                      className="flex items-start justify-between gap-2 rounded-lg bg-[#FAFAFC] px-3 py-2 text-xs text-[#111118]"
+                    >
+                      <span>• {rq}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated: JobApplication = {
+                            ...warRoomTarget,
+                            reverseQuestions: (warRoomTarget.reverseQuestions ?? []).filter(
+                              (_, i) => i !== idx
+                            ),
+                            updatedAt: new Date().toISOString(),
+                          };
+                          upsertApplication(updated);
+                          setWarRoomTarget(updated);
+                        }}
+                        className="text-[11px] text-[#848494] hover:text-rose-600"
+                      >
+                        移除
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
             </div>
           </div>
         </div>

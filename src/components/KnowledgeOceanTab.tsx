@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   ArrowRight,
   BookmarkCheck,
@@ -11,6 +12,7 @@ import {
   FileText,
   Globe,
   Loader2,
+  Mic,
   Sparkles,
   Trash2,
   Upload,
@@ -607,6 +609,17 @@ export default function KnowledgeOceanTab({
                           <p className="mt-2 text-xs leading-relaxed text-[#111118]">
                             &ldquo;{article.practicalUse.spokenAnswer}&rdquo;
                           </p>
+                          <div className="mt-2.5 flex justify-end">
+                            <Link
+                              href={`/practice?topic=${encodeURIComponent(
+                                article.practicalUse.interviewQuestions[0] || article.title
+                              )}&draft=${encodeURIComponent(article.practicalUse.spokenAnswer)}`}
+                              className="inline-flex items-center gap-1 rounded-lg bg-[#6E32F5] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[#5B24D6]"
+                            >
+                              <Mic className="h-3 w-3" />
+                              去语音教练练一遍
+                            </Link>
+                          </div>
                         </div>
                       </div>
                     </div>

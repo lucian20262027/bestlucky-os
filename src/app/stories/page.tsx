@@ -1,6 +1,7 @@
 'use client';
 
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
@@ -18,9 +19,9 @@ import { useApp } from '@/components/AppProvider';
 import { LarkImportPanel } from '@/components/LarkImportPanel';
 import { LibraryPanel } from '@/components/LibraryPanel';
 import { RoleMultiSelect } from '@/components/RoleMultiSelect';
-import { roleBadgeClasses } from '@/lib/helpers';
+import { getAllQuestions, roleBadgeClasses } from '@/lib/helpers';
 import { BEHAVIORAL_THEMES, ROLE_LIST, ROLES_BY_ID } from '@/lib/roles';
-import { RoleTrack, StarStory } from '@/lib/types';
+import { InterviewQuestion, RoleTrack, StarStory } from '@/lib/types';
 
 function createEmptyStory(): StarStory {
   return {
@@ -70,6 +71,19 @@ function StoriesHubContent() {
       return { theme, count };
     });
   }, [state.stories]);
+
+  const storyToQuestions = useMemo(() => {
+    const map: Record<string, InterviewQuestion[]> = {};
+    const allQ = getAllQuestions(state);
+    allQ.forEach((q) => {
+      const linked = state.questionNotes[q.id]?.linkedStoryIds ?? [];
+      linked.forEach((sid) => {
+        if (!map[sid]) map[sid] = [];
+        map[sid].push(q);
+      });
+    });
+    return map;
+  }, [state]);
 
   const filteredStories = useMemo(() => {
     return state.stories.filter((s) => {
@@ -394,6 +408,29 @@ function StoriesHubContent() {
                     </div>
                   </div>
                 )}
+
+                {/* Covered Interview Questions (Bidirectional Link) */}
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#ECECF2] pt-3">
+                  <span className="text-[11px] font-semibold text-[#848494]">
+                    已覆盖真题 ({(storyToQuestions[story.id] ?? []).length}):
+                  </span>
+                  {(storyToQuestions[story.id] ?? []).length > 0 ? (
+                    (storyToQuestions[story.id] ?? []).map((q) => (
+                      <Link
+                        key={q.id}
+                        href={`/questions/${q.id}`}
+                        className="inline-flex items-center gap-1 rounded-lg border border-[#D4C5FD] bg-[#F9F6FF] px-2.5 py-1 text-[11px] font-medium text-[#6E32F5] transition hover:bg-[#F3ECFF]"
+                      >
+                        <BookOpen className="h-3 w-3" />
+                        <span className="max-w-[240px] truncate">{q.title}</span>
+                      </Link>
+                    ))
+                  ) : (
+                    <span className="text-[11px] text-[#848494]">
+                      尚未挂载真题（可在任意真题详情页右侧一键挂载此故事）
+                    </span>
+                  )}
+                </div>
               </article>
             ))}
           </div>

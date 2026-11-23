@@ -173,151 +173,169 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </span>
         </button>
 
-        {/* Primary Nav */}
-        <nav className="space-y-0.5">
-          <Link
-            href="/"
-            onClick={() => setMobileOpen(false)}
-            className={navItemClass(pathname === '/')}
-          >
-            <span className="flex items-center gap-2.5">
-              <Home className="h-4 w-4 shrink-0" />
-              <span>Dashboard</span>
-            </span>
-          </Link>
-
-          {/* Courses with Flyout */}
-          <div
-            onMouseEnter={() => openFlyout('courses')}
-            onMouseLeave={scheduleCloseFlyout}
-          >
+        {/* Primary Nav (3 clean SaaS groups) */}
+        <nav className="space-y-4">
+          {/* Group 1: DAILY & DRILL */}
+          <div className="space-y-0.5">
+            <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#9A9AA8]">
+              Daily &amp; Drill
+            </div>
             <Link
-              href="/courses"
-              onClick={() => {
-                setFlyout(null);
-                setMobileOpen(false);
-              }}
-              className={navItemClass(pathname.startsWith('/courses'))}
+              href="/"
+              onClick={() => setMobileOpen(false)}
+              className={navItemClass(pathname === '/')}
             >
               <span className="flex items-center gap-2.5">
-                <BookOpen className="h-4 w-4 shrink-0" />
-                <span>Courses</span>
+                <Home className="h-4 w-4 shrink-0" />
+                <span>Dashboard</span>
               </span>
-              <ChevronRight className="h-3.5 w-3.5 opacity-55" />
             </Link>
-          </div>
 
-          {/* Questions with Flyout */}
-          <div
-            onMouseEnter={() => openFlyout('questions')}
-            onMouseLeave={scheduleCloseFlyout}
-          >
             <Link
-              href="/questions"
-              onClick={() => {
-                setFlyout(null);
-                setMobileOpen(false);
-              }}
-              className={navItemClass(pathname.startsWith('/questions'))}
+              href="/practice"
+              onClick={() => setMobileOpen(false)}
+              className={navItemClass(pathname.startsWith('/practice'))}
             >
               <span className="flex items-center gap-2.5">
-                <Database className="h-4 w-4 shrink-0" />
-                <span>Questions</span>
+                <MessageSquare className="h-4 w-4 shrink-0" />
+                <span>Practice</span>
               </span>
-              <ChevronRight className="h-3.5 w-3.5 opacity-55" />
             </Link>
+
+            {/* Questions with Flyout */}
+            <div
+              onMouseEnter={() => openFlyout('questions')}
+              onMouseLeave={scheduleCloseFlyout}
+            >
+              <Link
+                href="/questions"
+                onClick={() => {
+                  setFlyout(null);
+                  setMobileOpen(false);
+                }}
+                className={navItemClass(pathname.startsWith('/questions'))}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Database className="h-4 w-4 shrink-0" />
+                  <span>Questions</span>
+                </span>
+                <ChevronRight className="h-3.5 w-3.5 opacity-55" />
+              </Link>
+            </div>
           </div>
 
-          <Link
-            href="/practice"
-            onClick={() => setMobileOpen(false)}
-            className={navItemClass(pathname.startsWith('/practice'))}
-          >
-            <span className="flex items-center gap-2.5">
-              <MessageSquare className="h-4 w-4 shrink-0" />
-              <span>Practice</span>
-            </span>
-          </Link>
-
-          <Link
-            href="/customizer"
-            onClick={() => setMobileOpen(false)}
-            className={navItemClass(pathname.startsWith('/customizer'))}
-          >
-            <span className="flex items-center gap-2.5">
-              <Wand2 className="h-4 w-4 shrink-0" />
-              <span>JD Study Plan</span>
-            </span>
-          </Link>
-
-          <Link
-            href="/pipeline"
-            onClick={() => setMobileOpen(false)}
-            className={navItemClass(pathname.startsWith('/pipeline'))}
-          >
-            <span className="flex items-center gap-2.5">
-              <Briefcase className="h-4 w-4 shrink-0" />
-              <span>Job Pipeline</span>
-            </span>
-          </Link>
-
-          {/* Story Bank with Flyout (STAR+L, Content & Videos, Lark Import) */}
-          <div
-            onMouseEnter={() => openFlyout('stories')}
-            onMouseLeave={scheduleCloseFlyout}
-          >
+          {/* Group 2: TARGET & JOBS */}
+          <div className="space-y-0.5">
+            <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#9A9AA8]">
+              Target &amp; Jobs
+            </div>
             <Link
-              href="/stories"
-              onClick={() => {
-                setFlyout(null);
-                setMobileOpen(false);
-              }}
-              className={navItemClass(
-                pathname.startsWith('/stories') ||
-                  pathname.startsWith('/library') ||
-                  pathname.startsWith('/import')
-              )}
+              href="/customizer"
+              onClick={() => setMobileOpen(false)}
+              className={navItemClass(pathname.startsWith('/customizer'))}
             >
               <span className="flex items-center gap-2.5">
-                <Layers className="h-4 w-4 shrink-0" />
-                <span>Story Bank</span>
+                <Wand2 className="h-4 w-4 shrink-0" />
+                <span>JD Study Plan</span>
               </span>
-              <ChevronRight className="h-3.5 w-3.5 opacity-55" />
             </Link>
+
+            <Link
+              href="/pipeline"
+              onClick={() => setMobileOpen(false)}
+              className={navItemClass(pathname.startsWith('/pipeline'))}
+            >
+              <span className="flex items-center gap-2.5">
+                <Briefcase className="h-4 w-4 shrink-0" />
+                <span>Job Pipeline</span>
+              </span>
+            </Link>
+
+            {/* Courses with Flyout */}
+            <div
+              onMouseEnter={() => openFlyout('courses')}
+              onMouseLeave={scheduleCloseFlyout}
+            >
+              <Link
+                href="/courses"
+                onClick={() => {
+                  setFlyout(null);
+                  setMobileOpen(false);
+                }}
+                className={navItemClass(pathname.startsWith('/courses'))}
+              >
+                <span className="flex items-center gap-2.5">
+                  <BookOpen className="h-4 w-4 shrink-0" />
+                  <span>Courses</span>
+                </span>
+                <ChevronRight className="h-3.5 w-3.5 opacity-55" />
+              </Link>
+            </div>
           </div>
 
-          <Link
-            href="/frameworks"
-            onClick={() => setMobileOpen(false)}
-            className={navItemClass(pathname.startsWith('/frameworks'))}
-          >
-            <span className="flex items-center gap-2.5">
-              <Compass className="h-4 w-4 shrink-0" />
-              <span>7-Role Playbook</span>
-            </span>
-          </Link>
+          {/* Group 3: ASSETS & NOTES */}
+          <div className="space-y-0.5">
+            <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#9A9AA8]">
+              Assets &amp; Notes
+            </div>
+            {/* Story Bank with Flyout */}
+            <div
+              onMouseEnter={() => openFlyout('stories')}
+              onMouseLeave={scheduleCloseFlyout}
+            >
+              <Link
+                href="/stories"
+                onClick={() => {
+                  setFlyout(null);
+                  setMobileOpen(false);
+                }}
+                className={navItemClass(
+                  pathname.startsWith('/stories') ||
+                    pathname.startsWith('/library') ||
+                    pathname.startsWith('/import')
+                )}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Layers className="h-4 w-4 shrink-0" />
+                  <span>Story Bank</span>
+                </span>
+                <ChevronRight className="h-3.5 w-3.5 opacity-55" />
+              </Link>
+            </div>
 
-          <Link
-            href="/knowledge"
-            onClick={() => setMobileOpen(false)}
-            className={navItemClass(pathname.startsWith('/knowledge'))}
-          >
-            <span className="flex items-center gap-2.5">
-              <BookMarked className="h-4 w-4 shrink-0" />
-              <span>Knowledge Hub</span>
-            </span>
-          </Link>
+            <Link
+              href="/frameworks"
+              onClick={() => setMobileOpen(false)}
+              className={navItemClass(pathname.startsWith('/frameworks'))}
+            >
+              <span className="flex items-center gap-2.5">
+                <Compass className="h-4 w-4 shrink-0" />
+                <span>7-Role Playbook</span>
+              </span>
+            </Link>
 
-          <Link
-            href="/history"
-            onClick={() => setMobileOpen(false)}
-            className={navItemClass(pathname.startsWith('/history'))}
-          >
-            <span className="flex items-center gap-2.5">
-              <History className="h-4 w-4 shrink-0" />
-              <span>History</span>
-            </span>
-          </Link>
+            <Link
+              href="/knowledge"
+              onClick={() => setMobileOpen(false)}
+              className={navItemClass(pathname.startsWith('/knowledge'))}
+            >
+              <span className="flex items-center gap-2.5">
+                <BookMarked className="h-4 w-4 shrink-0" />
+                <span>Knowledge Hub</span>
+              </span>
+            </Link>
+
+            <Link
+              href="/history"
+              onClick={() => setMobileOpen(false)}
+              className={navItemClass(pathname.startsWith('/history'))}
+            >
+              <span className="flex items-center gap-2.5">
+                <History className="h-4 w-4 shrink-0" />
+                <span>History</span>
+              </span>
+            </Link>
+          </div>
         </nav>
       </div>
 
