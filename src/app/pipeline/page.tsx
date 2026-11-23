@@ -401,14 +401,14 @@ export default function JobPipelinePage() {
                         <p className="text-[11px] text-[#5E5E6E]">{app.roleTitle}</p>
                       </div>
                       <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 font-mono text-xs font-bold text-emerald-700">
-                        Y1 \${Math.round(year1Tc / 1000)}k
+                        Y1 ${Math.round(year1Tc / 1000)}k
                       </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <label className="space-y-1">
                         <span className="text-[10px] font-semibold uppercase text-[#848494]">
-                          Base (\$/yr)
+                          Base ($/yr)
                         </span>
                         <input
                           type="number"
@@ -421,7 +421,7 @@ export default function JobPipelinePage() {
                       </label>
                       <label className="space-y-1">
                         <span className="text-[10px] font-semibold uppercase text-[#848494]">
-                          Equity (\$/yr)
+                          Equity ($/yr)
                         </span>
                         <input
                           type="number"
@@ -434,7 +434,7 @@ export default function JobPipelinePage() {
                       </label>
                       <label className="space-y-1">
                         <span className="text-[10px] font-semibold uppercase text-[#848494]">
-                          Sign-on (\$)
+                          Sign-on ($)
                         </span>
                         <input
                           type="number"
@@ -464,19 +464,19 @@ export default function JobPipelinePage() {
                       <div className="flex justify-between">
                         <span className="text-[#848494]">Year 1 Total Comp:</span>
                         <span className="font-mono font-semibold text-[#111118]">
-                          \${year1Tc.toLocaleString()}
+                          ${year1Tc.toLocaleString()}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-[#848494]">Yr 2–4 Recurring/yr:</span>
                         <span className="font-mono font-semibold text-[#111118]">
-                          \${recurringAnnual.toLocaleString()}
+                          ${recurringAnnual.toLocaleString()}
                         </span>
                       </div>
                       <div className="flex justify-between border-t border-[#ECECF2] pt-1.5">
                         <span className="font-semibold text-[#6E32F5]">4-Year Total Package:</span>
                         <span className="font-mono font-bold text-[#6E32F5]">
-                          \${total4Yr.toLocaleString()}
+                          ${total4Yr.toLocaleString()}
                         </span>
                       </div>
                     </div>
