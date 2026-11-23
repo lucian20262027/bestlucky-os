@@ -98,7 +98,7 @@ export default function KnowledgeOceanTab({
     setAnalyzing(true);
     setNotice('');
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 25000);
+    const timeoutId = window.setTimeout(() => controller.abort(), 45000);
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (state.aiSettings.geminiApiKey.trim()) {

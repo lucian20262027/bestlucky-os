@@ -640,12 +640,9 @@ Return strict JSON:
         .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`)
         .join('\n');
 
-      const interaction = await ai.interactions.create({
+      const response = await ai.models.generateContent({
         model: chosenModel,
-        generation_config: {
-          thinking_level: 'low',
-        },
-        input: `You are Lucian's personal AI Assistant (powered by Gemini) inside BestLucky OS.
+        contents: `You are Lucian's personal AI Assistant (powered by Gemini) inside BestLucky OS.
 You can answer ANY question Lucian asks — general knowledge, coding, system design, product strategy, English phrasing, career advice, or interview prep — clearly, accurately, and conversationally.
 ${historyText ? `\nRecent Conversation:\n${historyText}\n` : ''}
 Current User Message: "${q}"
@@ -653,28 +650,29 @@ ${getLangInstruction(language)}
 Return strict JSON:
 - answer: Helpful, direct, well-structured answer addressing the user's exact question (no generic boilerplate).
 - links: 0 to 2 relevant BestLucky OS links ONLY if directly helpful, chosen from: [{"label": "...", "href": "/questions"}, {"label": "...", "href": "/customizer"}, {"label": "...", "href": "/knowledge"}, {"label": "...", "href": "/frameworks"}, {"label": "...", "href": "/stories"}, {"label": "...", "href": "/practice"}]; otherwise return [].`,
-        response_mime_type: 'application/json',
-        response_format: {
-          type: 'object',
-          properties: {
-            answer: { type: 'string' },
-            links: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  label: { type: 'string' },
-                  href: { type: 'string' },
+        config: {
+          responseMimeType: 'application/json',
+          responseJsonSchema: {
+            type: 'object',
+            properties: {
+              answer: { type: 'string' },
+              links: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    label: { type: 'string' },
+                    href: { type: 'string' },
+                  },
+                  required: ['label', 'href'],
                 },
-                required: ['label', 'href'],
               },
             },
+            required: ['answer', 'links'],
           },
-          required: ['answer', 'links'],
         },
-        store: false,
       });
-      const raw = stripCodeFences(interaction.output_text ?? '');
+      const raw = stripCodeFences(response.text ?? '');
       const parsed = JSON.parse(raw);
       return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: parsed });
     }
@@ -685,12 +683,9 @@ Return strict JSON:
       if (!content) {
         return NextResponse.json({ error: 'Article content is required' }, { status: 400 });
       }
-      const interaction = await ai.interactions.create({
+      const response = await ai.models.generateContent({
         model: chosenModel,
-        generation_config: {
-          thinking_level: 'low',
-        },
-        input: `Analyze this article for a senior candidate preparing for FDE, FDPM, and AI PM interviews at top US AI companies.
+        contents: `Analyze this article for a senior candidate preparing for FDE, FDPM, and AI PM interviews at top US AI companies.
 ${getLangInstruction(language)}
 
 Article Title: ${title}
@@ -709,33 +704,34 @@ Return strict JSON matching the schema:
   - pitfalls: 2 common pitfalls or traps candidates fall into when discussing this topic (Simplified Chinese).
   - deepFollowUps: 2 to 3 deeper Bar-Raiser follow-up questions & adjacent topics to expand on.
 - tags: 3 to 5 concise topic tags.`,
-        response_mime_type: 'application/json',
-        response_format: {
-          type: 'object',
-          properties: {
-            summary: { type: 'string' },
-            takeaways: { type: 'array', items: { type: 'string' } },
-            unifiedAngle: { type: 'string' },
-            roleNuance: { type: 'string' },
-            practicalUse: {
-              type: 'object',
-              properties: {
-                scenarios: { type: 'array', items: { type: 'string' } },
-                interviewQuestions: { type: 'array', items: { type: 'string' } },
-                spokenAnswer: { type: 'string' },
-                pitfalls: { type: 'array', items: { type: 'string' } },
-                deepFollowUps: { type: 'array', items: { type: 'string' } },
+        config: {
+          responseMimeType: 'application/json',
+          responseJsonSchema: {
+            type: 'object',
+            properties: {
+              summary: { type: 'string' },
+              takeaways: { type: 'array', items: { type: 'string' } },
+              unifiedAngle: { type: 'string' },
+              roleNuance: { type: 'string' },
+              practicalUse: {
+                type: 'object',
+                properties: {
+                  scenarios: { type: 'array', items: { type: 'string' } },
+                  interviewQuestions: { type: 'array', items: { type: 'string' } },
+                  spokenAnswer: { type: 'string' },
+                  pitfalls: { type: 'array', items: { type: 'string' } },
+                  deepFollowUps: { type: 'array', items: { type: 'string' } },
+                },
+                required: ['scenarios', 'interviewQuestions', 'spokenAnswer', 'pitfalls', 'deepFollowUps'],
               },
-              required: ['scenarios', 'interviewQuestions', 'spokenAnswer', 'pitfalls', 'deepFollowUps'],
+              tags: { type: 'array', items: { type: 'string' } },
             },
-            tags: { type: 'array', items: { type: 'string' } },
+            required: ['summary', 'takeaways', 'unifiedAngle', 'roleNuance', 'practicalUse', 'tags'],
           },
-          required: ['summary', 'takeaways', 'unifiedAngle', 'roleNuance', 'practicalUse', 'tags'],
         },
-        store: false,
       });
 
-      const raw = stripCodeFences(interaction.output_text ?? '');
+      const raw = stripCodeFences(response.text ?? '');
       const parsed = JSON.parse(raw);
       return NextResponse.json({ mode: 'live_gemini', model: chosenModel, data: parsed });
     }
