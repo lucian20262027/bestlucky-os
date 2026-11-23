@@ -47,3 +47,83 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #c0c0cf;
 }
+
+/* BestLucky OS half-hour chime animations */
+@keyframes bl-brand-nudge {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  35% {
+    transform: translateY(-3px) scale(1.05);
+  }
+  70% {
+    transform: translateY(1px) scale(0.98);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes bl-flip-in {
+  0% {
+    transform: perspective(500px) rotateX(-85deg);
+    opacity: 0;
+  }
+  65% {
+    transform: perspective(500px) rotateX(10deg);
+    opacity: 1;
+  }
+  100% {
+    transform: perspective(500px) rotateX(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes bl-flip-out {
+  0% {
+    transform: perspective(500px) rotateX(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: perspective(500px) rotateX(85deg);
+    opacity: 0;
+  }
+}
+
+@keyframes bl-chime-double-bounce {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  16% {
+    transform: translateY(-3px) scale(1.06);
+  }
+  32% {
+    transform: translateY(0) scale(1);
+  }
+  52% {
+    transform: translateY(0) scale(1);
+  }
+  68% {
+    transform: translateY(-3px) scale(1.06);
+  }
+  84% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-bl-nudge {
+  animation: bl-brand-nudge 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-bl-flip-in {
+  animation: bl-flip-in 380ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-bl-flip-out {
+  animation: bl-flip-out 300ms ease-in forwards;
+}
+
+.animate-bl-double-bounce {
+  animation: bl-chime-double-bounce 2400ms cubic-bezier(0.22, 1, 0.36, 1) 360ms 1;
+}
