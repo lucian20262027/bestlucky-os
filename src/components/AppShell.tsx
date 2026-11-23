@@ -173,36 +173,46 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </span>
         </button>
 
-        {/* Primary Nav (3 clean SaaS groups) */}
+        {/* Primary Nav (Streamlined 7-item grouped IA) */}
         <nav className="space-y-4">
-          {/* Group 1: DAILY & DRILL */}
+          <Link
+            href="/"
+            onClick={() => setMobileOpen(false)}
+            className={navItemClass(pathname === '/')}
+          >
+            <span className="flex items-center gap-2.5">
+              <Home className="h-4 w-4 shrink-0" />
+              <span>Dashboard</span>
+            </span>
+          </Link>
+
+          {/* Group 1: CURRICULUM & STORIES */}
           <div className="space-y-0.5">
             <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#9A9AA8]">
-              Daily &amp; Drill
+              Curriculum &amp; Stories
             </div>
-            <Link
-              href="/"
-              onClick={() => setMobileOpen(false)}
-              className={navItemClass(pathname === '/')}
+            {/* Courses with Flyout */}
+            <div
+              onMouseEnter={() => openFlyout('courses')}
+              onMouseLeave={scheduleCloseFlyout}
             >
-              <span className="flex items-center gap-2.5">
-                <Home className="h-4 w-4 shrink-0" />
-                <span>Dashboard</span>
-              </span>
-            </Link>
+              <Link
+                href="/courses"
+                onClick={() => {
+                  setFlyout(null);
+                  setMobileOpen(false);
+                }}
+                className={navItemClass(pathname.startsWith('/courses'))}
+              >
+                <span className="flex items-center gap-2.5">
+                  <BookOpen className="h-4 w-4 shrink-0" />
+                  <span>Courses</span>
+                </span>
+                <ChevronRight className="h-3.5 w-3.5 opacity-55" />
+              </Link>
+            </div>
 
-            <Link
-              href="/practice"
-              onClick={() => setMobileOpen(false)}
-              className={navItemClass(pathname.startsWith('/practice'))}
-            >
-              <span className="flex items-center gap-2.5">
-                <MessageSquare className="h-4 w-4 shrink-0" />
-                <span>Practice</span>
-              </span>
-            </Link>
-
-            {/* Questions with Flyout */}
+            {/* Questions & Stories Unified Entry with Flyout */}
             <div
               onMouseEnter={() => openFlyout('questions')}
               onMouseLeave={scheduleCloseFlyout}
@@ -213,22 +223,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   setFlyout(null);
                   setMobileOpen(false);
                 }}
-                className={navItemClass(pathname.startsWith('/questions'))}
+                className={navItemClass(
+                  pathname.startsWith('/questions') ||
+                    pathname.startsWith('/stories') ||
+                    pathname.startsWith('/library') ||
+                    pathname.startsWith('/import')
+                )}
               >
                 <span className="flex items-center gap-2.5">
                   <Database className="h-4 w-4 shrink-0" />
-                  <span>Questions</span>
+                  <span>Questions &amp; Stories</span>
                 </span>
                 <ChevronRight className="h-3.5 w-3.5 opacity-55" />
               </Link>
             </div>
           </div>
 
-          {/* Group 2: TARGET & JOBS */}
+          {/* Group 2: PRACTICE & PIPELINE */}
           <div className="space-y-0.5">
             <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#9A9AA8]">
-              Target &amp; Jobs
+              Practice &amp; Pipeline
             </div>
+            <Link
+              href="/practice"
+              onClick={() => setMobileOpen(false)}
+              className={navItemClass(
+                pathname.startsWith('/practice') || pathname.startsWith('/history')
+              )}
+            >
+              <span className="flex items-center gap-2.5">
+                <MessageSquare className="h-4 w-4 shrink-0" />
+                <span>Practice</span>
+              </span>
+            </Link>
+
             <Link
               href="/customizer"
               onClick={() => setMobileOpen(false)}
@@ -250,70 +278,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <span>Job Pipeline</span>
               </span>
             </Link>
-
-            {/* Courses with Flyout */}
-            <div
-              onMouseEnter={() => openFlyout('courses')}
-              onMouseLeave={scheduleCloseFlyout}
-            >
-              <Link
-                href="/courses"
-                onClick={() => {
-                  setFlyout(null);
-                  setMobileOpen(false);
-                }}
-                className={navItemClass(pathname.startsWith('/courses'))}
-              >
-                <span className="flex items-center gap-2.5">
-                  <BookOpen className="h-4 w-4 shrink-0" />
-                  <span>Courses</span>
-                </span>
-                <ChevronRight className="h-3.5 w-3.5 opacity-55" />
-              </Link>
-            </div>
           </div>
 
-          {/* Group 3: ASSETS & NOTES */}
+          {/* Group 3: KNOWLEDGE */}
           <div className="space-y-0.5">
             <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#9A9AA8]">
-              Assets &amp; Notes
+              Knowledge
             </div>
-            {/* Story Bank with Flyout */}
-            <div
-              onMouseEnter={() => openFlyout('stories')}
-              onMouseLeave={scheduleCloseFlyout}
-            >
-              <Link
-                href="/stories"
-                onClick={() => {
-                  setFlyout(null);
-                  setMobileOpen(false);
-                }}
-                className={navItemClass(
-                  pathname.startsWith('/stories') ||
-                    pathname.startsWith('/library') ||
-                    pathname.startsWith('/import')
-                )}
-              >
-                <span className="flex items-center gap-2.5">
-                  <Layers className="h-4 w-4 shrink-0" />
-                  <span>Story Bank</span>
-                </span>
-                <ChevronRight className="h-3.5 w-3.5 opacity-55" />
-              </Link>
-            </div>
-
-            <Link
-              href="/frameworks"
-              onClick={() => setMobileOpen(false)}
-              className={navItemClass(pathname.startsWith('/frameworks'))}
-            >
-              <span className="flex items-center gap-2.5">
-                <Compass className="h-4 w-4 shrink-0" />
-                <span>7-Role Playbook</span>
-              </span>
-            </Link>
-
             <Link
               href="/knowledge"
               onClick={() => setMobileOpen(false)}
@@ -322,17 +293,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="flex items-center gap-2.5">
                 <BookMarked className="h-4 w-4 shrink-0" />
                 <span>Knowledge Hub</span>
-              </span>
-            </Link>
-
-            <Link
-              href="/history"
-              onClick={() => setMobileOpen(false)}
-              className={navItemClass(pathname.startsWith('/history'))}
-            >
-              <span className="flex items-center gap-2.5">
-                <History className="h-4 w-4 shrink-0" />
-                <span>History</span>
               </span>
             </Link>
           </div>

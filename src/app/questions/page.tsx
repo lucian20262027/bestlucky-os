@@ -162,6 +162,27 @@ function QuestionBankInner() {
         </div>
       </div>
 
+      {/* Unified Questions & Story Bank Switcher */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#ECECF2] pb-3">
+        <span className="inline-flex items-center gap-1.5 rounded-xl bg-[#6E32F5] px-3.5 py-1.5 text-xs font-semibold text-white">
+          <BookOpen className="h-3.5 w-3.5" />
+          题目库 (Questions · {allQuestions.length})
+        </span>
+        <Link
+          href="/stories"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-[#ECECF2] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#525260] transition hover:border-[#6E32F5]/40 hover:text-[#6E32F5]"
+        >
+          STAR+L 故事库 ({state.stories.length})
+        </Link>
+        <Link
+          href="/stories?tab=videos"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-[#ECECF2] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#525260] transition hover:border-[#6E32F5]/40 hover:text-[#6E32F5]"
+        >
+          <Video className="h-3.5 w-3.5" />
+          视频 &amp; 飞书导入
+        </Link>
+      </div>
+
       {/* Multi-select Track Filter Pills */}
       <div className="flex flex-wrap items-center gap-2">
         <button

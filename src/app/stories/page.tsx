@@ -158,8 +158,15 @@ function StoriesHubContent() {
         )}
       </div>
 
-      {/* Sub-navigation Tabs */}
+      {/* Sub-navigation Tabs (Unified with Questions) */}
       <div className="flex flex-wrap gap-2 border-b border-[#ECECF2] pb-3">
+        <Link
+          href="/questions"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-[#ECECF2] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#525260] transition hover:border-[#6E32F5]/40 hover:text-[#6E32F5]"
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+          题目库 (Questions)
+        </Link>
         <button
           type="button"
           onClick={() => setActiveTab('stories')}

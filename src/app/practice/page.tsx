@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
+  History,
   Layers,
   Mic,
   Play,
@@ -13,11 +14,11 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import { VoiceCoachPanel } from '@/components/VoiceCoachPanel';
-import { getAllQuestions, getQuestionStatus, roleBadgeClasses } from '@/lib/helpers';
+import { formatDuration, getAllQuestions, getQuestionStatus, roleBadgeClasses } from '@/lib/helpers';
 import { ROLE_LIST, ROLES_BY_ID, ROUND_LABELS } from '@/lib/roles';
 import { RoleTrack } from '@/lib/types';
 
-type PracticeTab = 'voice' | 'mock';
+type PracticeTab = 'voice' | 'mock' | 'history';
 
 function PracticeLauncherContent() {
   const router = useRouter();
@@ -150,6 +151,18 @@ function PracticeLauncherContent() {
         >
           <Layers className="h-3.5 w-3.5" />
           Mock Room 题库模拟 ({allQuestions.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('history')}
+          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+            activeTab === 'history'
+              ? 'bg-[#6E32F5] text-white shadow-xs'
+              : 'text-[#5E5E6E] hover:bg-[#F7F7FA] hover:text-[#111118]'
+          }`}
+        >
+          <History className="h-3.5 w-3.5" />
+          练习记录 ({state.sessions.length})
         </button>
       </div>
 
@@ -352,6 +365,67 @@ function PracticeLauncherContent() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* TAB 3: Practice History */}
+      {activeTab === 'history' && (
+        <div className="space-y-4">
+          {state.sessions.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-[#ECECF2] bg-white p-10 text-center text-xs text-[#848494]">
+              还没有 Mock Room 练习记录 — 在「Mock Room 题库模拟」完成一次模拟面试并提交评估后，会自动沉淀在这里。
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {state.sessions.map((sess) => (
+                <div
+                  key={sess.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#ECECF2] bg-white p-4 shadow-2xs"
+                >
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${roleBadgeClasses(
+                          sess.role
+                        )}`}
+                      >
+                        {ROLES_BY_ID[sess.role]?.shortLabel}
+                      </span>
+                      <span className="text-[11px] text-[#848494]">
+                        {ROUND_LABELS[sess.round]?.en} · {formatDuration(sess.durationSec)}
+                      </span>
+                      {sess.evaluation && (
+                        <span className="rounded-full bg-[#F3ECFF] px-2 py-0.5 font-mono text-[11px] font-semibold text-[#6E32F5]">
+                          {sess.evaluation.overallScore.toFixed(1)} / 5.0 · {sess.evaluation.verdict}
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="text-sm font-semibold text-[#111118]">{sess.questionTitle}</h3>
+                    {sess.evaluation?.summary && (
+                      <p className="line-clamp-2 text-xs text-[#5E5E6E]">
+                        {sess.evaluation.summary}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/practice/${sess.questionId}`}
+                      className="inline-flex items-center gap-1 rounded-lg bg-[#111118] px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+                    >
+                      <Play className="h-3 w-3" />
+                      再练一次
+                    </Link>
+                    <Link
+                      href="/history"
+                      className="rounded-lg border border-[#ECECF2] px-3 py-1.5 text-xs font-medium text-[#5E5E6E] hover:text-[#6E32F5]"
+                    >
+                      完整记录 →
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
