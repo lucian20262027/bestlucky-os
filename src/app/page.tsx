@@ -3,32 +3,21 @@
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  BookMarked,
-  FileUp,
-  MessageSquare,
-  Plus,
   RefreshCw,
   Sparkles,
   Volume2,
-  Zap,
 } from 'lucide-react';
 import { AffirmationVideoStrip } from '@/components/AffirmationVideoStrip';
 import { useApp } from '@/components/AppProvider';
-import { QuestionModal } from '@/components/QuestionModal';
 import { QuickLaunchDock } from '@/components/QuickLaunchDock';
-import { RareFolderCard } from '@/components/RareFolderCard';
 import { TodoWorkspacePanel } from '@/components/TodoWorkspacePanel';
-import { WarmupModal } from '@/components/WarmupModal';
 import { getDailyQuote } from '@/lib/daily-quotes';
-import { getAllQuestions } from '@/lib/helpers';
 
 export default function DashboardPage() {
   const {
     state,
     mounted,
     todayISO,
-    addCustomQuestion,
-    updateQuestionNotes,
     addTodo,
     updateTodo,
     toggleTodo,
@@ -37,8 +26,6 @@ export default function DashboardPage() {
   } = useApp();
 
   const [quoteOffset, setQuoteOffset] = useState(0);
-  const [addQuestionOpen, setAddQuestionOpen] = useState(false);
-  const [warmupOpen, setWarmupOpen] = useState(false);
 
   const greetingText = useMemo(() => {
     const displayName =
@@ -50,7 +37,6 @@ export default function DashboardPage() {
     return `Good evening, ${displayName}`;
   }, [mounted, state.profile.name]);
 
-  const allQuestions = useMemo(() => getAllQuestions(state), [state]);
   const dailyQuote = useMemo(
     () => getDailyQuote(todayISO, quoteOffset),
     [todayISO, quoteOffset]
@@ -99,48 +85,6 @@ export default function DashboardPage() {
               <RefreshCw className="h-3.5 w-3.5" />
             </button>
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setWarmupOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#6E32F5] to-[#8B5CF6] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:opacity-95"
-          >
-            <Zap className="h-3.5 w-3.5" />
-            15-Min Warmup
-          </button>
-          <Link
-            href="/questions"
-            className="rounded-xl border border-[#ECECF2] bg-white px-3 py-1.5 text-xs font-semibold text-[#111118] shadow-2xs transition hover:border-[#6E32F5]/50"
-          >
-            <span className="text-[#6E32F5]" suppressHydrationWarning>
-              {mounted ? allQuestions.length : 0}
-            </span>{' '}
-            Questions
-          </Link>
-          <Link
-            href="/stories"
-            className="rounded-xl border border-[#ECECF2] bg-white px-3 py-1.5 text-xs font-semibold text-[#111118] shadow-2xs transition hover:border-[#6E32F5]/50"
-          >
-            <span className="text-[#6E32F5]" suppressHydrationWarning>
-              {mounted ? state.stories.length : 0}
-            </span>{' '}
-            Stories
-          </Link>
-          <Link
-            href="/knowledge"
-            className="rounded-xl border border-[#ECECF2] bg-white px-3 py-1.5 text-xs font-semibold text-[#111118] shadow-2xs transition hover:border-[#6E32F5]/50"
-          >
-            <span className="text-[#6E32F5]" suppressHydrationWarning>
-              {mounted ? state.knowledgeSnippets.length : 0}
-            </span>{' '}
-            Soundbites ·{' '}
-            <span className="text-[#6E32F5]" suppressHydrationWarning>
-              {mounted ? state.vocabItems.length : 0}
-            </span>{' '}
-            Vocab
-          </Link>
         </div>
       </div>
 
@@ -226,60 +170,6 @@ export default function DashboardPage() {
           </div>
         </section>
       )}
-
-      {/* Row 5: RareUI 3D Frosted Folder Launchpad (4 Cards) */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-[#848494]">
-            Quick Workspace Modules
-          </h2>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <RareFolderCard
-            title="Add Question & Video"
-            subtitle="Multi-role & round tagging"
-            badge="Studio"
-            accent="obsidian"
-            icon={<Plus className="h-4 w-4" />}
-            onClick={() => setAddQuestionOpen(true)}
-          />
-          <RareFolderCard
-            title="Lark One-Click Import"
-            subtitle="Sync Wiki, Docs & Bitable"
-            badge="Feishu"
-            accent="indigo"
-            icon={<FileUp className="h-4 w-4" />}
-            href="/stories?tab=import"
-          />
-          <RareFolderCard
-            title="Knowledge Hub"
-            subtitle="Vocab book & AI soundbites"
-            badge="Hub"
-            accent="violet"
-            icon={<BookMarked className="h-4 w-4" />}
-            href="/knowledge"
-          />
-          <RareFolderCard
-            title="AI Mock Room"
-            subtitle="Whiteboard & rubric scorecard"
-            badge="Live"
-            accent="emerald"
-            icon={<MessageSquare className="h-4 w-4" />}
-            href="/practice"
-          />
-        </div>
-      </section>
-
-      <QuestionModal
-        open={addQuestionOpen}
-        onClose={() => setAddQuestionOpen(false)}
-        onSave={(q, notes) => {
-          addCustomQuestion(q);
-          if (notes) updateQuestionNotes(q.id, notes);
-        }}
-      />
-
-      <WarmupModal open={warmupOpen} onClose={() => setWarmupOpen(false)} />
     </div>
   );
 }
