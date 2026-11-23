@@ -97,6 +97,8 @@ export default function KnowledgeOceanTab({
     if (!rawTextInput.trim() || analyzing) return;
     setAnalyzing(true);
     setNotice('');
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 25000);
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (state.aiSettings.geminiApiKey.trim()) {
@@ -106,17 +108,19 @@ export default function KnowledgeOceanTab({
       const res = await fetch('/api/ai', {
         method: 'POST',
         headers,
+        signal: controller.signal,
         body: JSON.stringify({
           action: 'analyze_article',
           model: state.aiSettings.model,
           language: state.aiSettings.language,
           payload: {
             title: finalTitle,
-            content: rawTextInput.trim(),
+            content: rawTextInput.trim().slice(0, 12000),
           },
         }),
       });
-      const json = (await res.json()) as {
+      const raw = await res.text();
+      let json: {
         mode?: 'live_gemini' | 'local_fallback';
         warning?: string;
         data?: {
@@ -135,9 +139,14 @@ export default function KnowledgeOceanTab({
           tags: string[];
         };
         error?: string;
-      };
+      } = {};
+      try {
+        json = raw ? (JSON.parse(raw) as typeof json) : {};
+      } catch {
+        json = {};
+      }
       if (!res.ok || !json.data) {
-        setNotice(json.error || '分析失败，请稍后重试');
+        setNotice(json.error || `分析请求失败 (HTTP ${res.status})，请重试`);
         return;
       }
       if (json.warning) {
@@ -164,7 +173,16 @@ export default function KnowledgeOceanTab({
       setSourceUrlInput('');
       setFileNameInput('');
       setRawTextInput('');
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.name === 'AbortError'
+          ? '分析超时（超过 25 秒），请重试或截取文章前半部分。'
+          : err instanceof Error
+            ? `请求异常: ${err.message}`
+            : '分析请求失败，请重试';
+      setNotice(msg);
     } finally {
+      window.clearTimeout(timeoutId);
       setAnalyzing(false);
     }
   };

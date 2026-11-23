@@ -678,12 +678,15 @@ Return strict JSON:
 
     if (action === 'analyze_article') {
       const title = String(payload.title ?? 'Uploaded Article').trim();
-      const content = String(payload.content ?? '').trim().slice(0, 18000);
+      const content = String(payload.content ?? '').trim().slice(0, 8000);
       if (!content) {
         return NextResponse.json({ error: 'Article content is required' }, { status: 400 });
       }
       const interaction = await ai.interactions.create({
         model: chosenModel,
+        generation_config: {
+          thinking_level: 'minimal',
+        },
         input: `Analyze this article for a senior candidate preparing for FDE, FDPM, and AI PM interviews at top US AI companies.
 ${getLangInstruction(language)}
 
