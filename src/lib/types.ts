@@ -25,6 +25,16 @@ export type RoundType =
 
 export type Difficulty = 'core' | 'senior' | 'staff';
 
+export type QuestionCategory =
+  | 'intro-culture'
+  | 'success-stories'
+  | 'fail-stories'
+  | 'xfn'
+  | 'metrics'
+  | 'product-ai'
+  | 'system-tech'
+  | 'strategy-case';
+
 export type QuestionStatus = 'unpracticed' | 'needs_drill' | 'mastered';
 
 export type LanguageMode = 'en' | 'bilingual' | 'zh';
@@ -85,6 +95,7 @@ export interface InterviewQuestion {
   secondaryRoles: RoleTrack[];
   round: RoundType;
   secondaryRounds?: RoundType[];
+  category?: QuestionCategory;
   difficulty: Difficulty;
   timeLimitMin: number;
   companyStyle: string;

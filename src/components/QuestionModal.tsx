@@ -3,11 +3,13 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, Upload, Video, X } from 'lucide-react';
 import { RoleMultiSelect } from './RoleMultiSelect';
+import { inferQuestionCategory, QUESTION_CATEGORIES } from '@/lib/helpers';
 import { saveLocalMedia } from '@/lib/media-db';
 import { ROLES_BY_ID, ROUND_LABELS } from '@/lib/roles';
 import {
   Difficulty,
   InterviewQuestion,
+  QuestionCategory,
   QuestionUserNotes,
   RoleTrack,
   RoundType,
@@ -34,6 +36,7 @@ export function QuestionModal({
   const [roles, setRoles] = useState<RoleTrack[]>([defaultRole]);
   const [round, setRound] = useState<RoundType>('decomposition');
   const [secondaryRounds, setSecondaryRounds] = useState<RoundType[]>([]);
+  const [category, setCategory] = useState<QuestionCategory>('success-stories');
   const [difficulty, setDifficulty] = useState<Difficulty>('senior');
   const [companyStyle, setCompanyStyle] = useState('');
   const [prompt, setPrompt] = useState('');
@@ -57,6 +60,7 @@ export function QuestionModal({
       setRoles(combined.length > 0 ? combined : [defaultRole]);
       setRound(initialQuestion.round);
       setSecondaryRounds(initialQuestion.secondaryRounds ?? []);
+      setCategory(initialQuestion.category ?? inferQuestionCategory(initialQuestion));
       setDifficulty(initialQuestion.difficulty);
       setCompanyStyle(initialQuestion.companyStyle);
       setPrompt(initialQuestion.prompt);
@@ -134,6 +138,7 @@ export function QuestionModal({
       secondaryRoles,
       round,
       secondaryRounds: secondaryRounds.filter((r) => r !== round),
+      category,
       difficulty,
       timeLimitMin: initialQuestion?.timeLimitMin ?? 30,
       companyStyle: companyStyle.trim() || `${roleCfg.shortLabel} Personal Bank`,
@@ -231,6 +236,22 @@ export function QuestionModal({
                 {Object.entries(ROUND_LABELS).map(([k, v]) => (
                   <option key={k} value={k}>
                     {v.en} ({v.zh})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#525260]">
+                Question Category (问题大类)
+              </label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as QuestionCategory)}
+                className="mt-1 w-full rounded-lg border border-[#ECECF2] bg-white px-2.5 py-2 text-xs focus:border-[#6E32F5] focus:outline-none"
+              >
+                {QUESTION_CATEGORIES.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
                   </option>
                 ))}
               </select>

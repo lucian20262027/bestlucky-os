@@ -20,11 +20,19 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import { QuestionModal } from '@/components/QuestionModal';
-import { getAllQuestions, getQuestionStatus, roleBadgeClasses } from '@/lib/helpers';
+import {
+  getAllQuestions,
+  getCategoryMeta,
+  getQuestionStatus,
+  inferQuestionCategory,
+  QUESTION_CATEGORIES,
+  roleBadgeClasses,
+} from '@/lib/helpers';
 import { ROLE_LIST, ROLES_BY_ID, ROUND_LABELS } from '@/lib/roles';
 import {
   Difficulty,
   InterviewQuestion,
+  QuestionCategory,
   QuestionStatus,
   RoleTrack,
   RoundType,
@@ -50,6 +58,7 @@ function QuestionBankInner() {
   const [roleFilters, setRoleFilters] = useState<RoleTrack[]>(
     validInitialRole === 'all' ? [] : [validInitialRole]
   );
+  const [categoryFilter, setCategoryFilter] = useState<QuestionCategory | 'all'>('all');
   const [roundFilter, setRoundFilter] = useState<RoundType | 'all'>('all');
   const [difficultyFilter, setDifficultyFilter] = useState<Difficulty | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<QuestionStatus | 'all'>('all');
@@ -85,12 +94,23 @@ function QuestionBankInner() {
     return counts;
   }, [allQuestions]);
 
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: allQuestions.length };
+    QUESTION_CATEGORIES.forEach((cat) => {
+      counts[cat.id] = allQuestions.filter((q) => inferQuestionCategory(q) === cat.id).length;
+    });
+    return counts;
+  }, [allQuestions]);
+
   const filteredQuestions = useMemo(() => {
     const qLower = search.trim().toLowerCase();
     return allQuestions.filter((item) => {
       if (roleFilters.length > 0) {
         const itemRoles = [item.role, ...item.secondaryRoles];
         if (!roleFilters.some((rf) => itemRoles.includes(rf))) return false;
+      }
+      if (categoryFilter !== 'all' && inferQuestionCategory(item) !== categoryFilter) {
+        return false;
       }
       if (roundFilter !== 'all') {
         const itemRounds = [item.round, ...(item.secondaryRounds ?? [])];
@@ -108,7 +128,16 @@ function QuestionBankInner() {
       }
       return true;
     });
-  }, [allQuestions, roleFilters, roundFilter, difficultyFilter, statusFilter, search, state]);
+  }, [
+    allQuestions,
+    roleFilters,
+    categoryFilter,
+    roundFilter,
+    difficultyFilter,
+    statusFilter,
+    search,
+    state,
+  ]);
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -220,6 +249,38 @@ function QuestionBankInner() {
         )}
       </div>
 
+      {/* Question Category Pills (问题大类) */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setCategoryFilter('all')}
+          className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
+            categoryFilter === 'all'
+              ? 'border-[#6E32F5] bg-[#F3ECFF] text-[#6E32F5]'
+              : 'border-[#ECECF2] bg-white text-[#5E5E6E] hover:border-[#6E32F5]/40'
+          }`}
+        >
+          All Categories ({categoryCounts.all})
+        </button>
+        {QUESTION_CATEGORIES.map((cat) => {
+          const active = categoryFilter === cat.id;
+          return (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setCategoryFilter(cat.id)}
+              className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
+                active
+                  ? 'border-[#6E32F5] bg-[#6E32F5] text-white'
+                  : 'border-[#ECECF2] bg-white text-[#5E5E6E] hover:border-[#6E32F5]/40 hover:text-[#111118]'
+              }`}
+            >
+              {cat.label} ({categoryCounts[cat.id] ?? 0})
+            </button>
+          );
+        })}
+      </div>
+
       {/* Search & Secondary Filters */}
       <div className="grid grid-cols-1 gap-3 rounded-2xl border border-[#ECECF2] bg-white p-3.5 sm:grid-cols-2 lg:grid-cols-5">
         <div className="relative lg:col-span-2">
@@ -310,6 +371,16 @@ function QuestionBankInner() {
                           +{ROLES_BY_ID[sr].shortLabel}
                         </span>
                       ))}
+                      {(() => {
+                        const catMeta = getCategoryMeta(inferQuestionCategory(q));
+                        return (
+                          <span
+                            className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${catMeta.badgeClass}`}
+                          >
+                            {catMeta.shortLabel}
+                          </span>
+                        );
+                      })()}
                       <span className="rounded-md bg-[#FAFAFC] px-2 py-0.5 text-[11px] text-[#525260]">
                         {ROUND_LABELS[q.round].en}
                       </span>

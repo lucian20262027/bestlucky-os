@@ -5,9 +5,139 @@ import {
   DiagramEdge,
   DiagramNode,
   InterviewQuestion,
+  QuestionCategory,
   QuestionStatus,
   RoleTrack,
 } from './types';
+
+export const QUESTION_CATEGORIES: Array<{
+  id: QuestionCategory;
+  label: string;
+  shortLabel: string;
+  badgeClass: string;
+}> = [
+  {
+    id: 'intro-culture',
+    label: 'Intro & Culture Fit',
+    shortLabel: 'Intro & Culture',
+    badgeClass: 'bg-[#F3ECFF] text-[#6E32F5]',
+  },
+  {
+    id: 'success-stories',
+    label: 'Success Stories',
+    shortLabel: 'Success Stories',
+    badgeClass: 'bg-emerald-50 text-emerald-700',
+  },
+  {
+    id: 'fail-stories',
+    label: 'Failure & Conflict',
+    shortLabel: 'Fail & Conflict',
+    badgeClass: 'bg-rose-50 text-rose-700',
+  },
+  {
+    id: 'xfn',
+    label: 'XFN & Stakeholder',
+    shortLabel: 'XFN',
+    badgeClass: 'bg-sky-50 text-sky-700',
+  },
+  {
+    id: 'metrics',
+    label: 'Metrics & Execution',
+    shortLabel: 'Metrics',
+    badgeClass: 'bg-amber-50 text-amber-800',
+  },
+  {
+    id: 'product-ai',
+    label: 'Product & AI Design',
+    shortLabel: 'Product & AI',
+    badgeClass: 'bg-violet-50 text-violet-700',
+  },
+  {
+    id: 'system-tech',
+    label: 'System & Tech / Coding',
+    shortLabel: 'System & Tech',
+    badgeClass: 'bg-indigo-50 text-indigo-700',
+  },
+  {
+    id: 'strategy-case',
+    label: 'Strategy & Case Study',
+    shortLabel: 'Strategy & Case',
+    badgeClass: 'bg-teal-50 text-teal-700',
+  },
+];
+
+export function getCategoryMeta(cat: QuestionCategory) {
+  return QUESTION_CATEGORIES.find((c) => c.id === cat) ?? QUESTION_CATEGORIES[0];
+}
+
+export function inferQuestionCategory(q: InterviewQuestion): QuestionCategory {
+  if (q.category) return q.category;
+  const text = `${q.title} ${q.prompt} ${(q.tags ?? []).join(' ')}`.toLowerCase();
+
+  if (
+    /why company|why this role|why us|tell me about yourself|self intro|culture fit|values|career arc/.test(
+      text
+    )
+  ) {
+    return 'intro-culture';
+  }
+  if (
+    /fail|failure|mistake|conflict|disagree|pushback|missed|regret|setback|difficult stakeholder|hard feedback/.test(
+      text
+    )
+  ) {
+    return 'fail-stories';
+  }
+  if (
+    q.round === 'xfn' ||
+    /cross-functional|\bxfn\b|alignment|sales|executive|vp|ceo|stakeholder/.test(text)
+  ) {
+    return 'xfn';
+  }
+  if (
+    q.round === 'execution-metrics' ||
+    q.round === 'estimation' ||
+    /\bmetric|\bkpi|\bwbr|\bqbr|a\/b|conversion|ebitda|margin|retention|north star|market sizing|diagnos/.test(
+      text
+    )
+  ) {
+    return 'metrics';
+  }
+  if (
+    q.round === 'product-ai' ||
+    /product design|ai design|guardrail|eval|rag|prompt|agent|copilot|ux|hallucination|hitl/.test(
+      text
+    )
+  ) {
+    return 'product-ai';
+  }
+  if (
+    q.round === 'technical' ||
+    q.round === 'decomposition' ||
+    /system design|architecture|erp|api|latency|coding|debug|schema|pipeline|warehouse|30-60-90/.test(
+      text
+    )
+  ) {
+    return 'system-tech';
+  }
+  if (
+    q.round === 'case-strategy' ||
+    /strategy|case study|build vs\.? buy|pricing|gtm|go-to-market|expansion|market entry/.test(
+      text
+    )
+  ) {
+    return 'strategy-case';
+  }
+  if (
+    q.round === 'behavioral' ||
+    q.round === 'hiring-manager' ||
+    q.round === 'phone-screen' ||
+    /success|0→1|0-to-1|proudest|shipped|scaled|turned around|rescued/.test(text)
+  ) {
+    return 'success-stories';
+  }
+  return 'strategy-case';
+}
 
 export function getAllQuestions(state: AppState): InterviewQuestion[] {
   return [...state.customQuestions, ...SEED_QUESTIONS];
