@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Loader2, MessageSquare, Send, Sparkles, X } from 'lucide-react';
+import { ArrowRight, KeyRound, Loader2, MessageSquare, Send, Sparkles, X } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 
 interface ChatTurn {
@@ -13,15 +13,18 @@ interface ChatTurn {
 }
 
 export function FloatingCopilotWidget() {
-  const { state } = useApp();
+  const { state, updateAISettings } = useApp();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [keyDraft, setKeyDraft] = useState('');
+  const [engineMode, setEngineMode] = useState<'unknown' | 'live_gemini' | 'local_fallback'>('unknown');
   const [turns, setTurns] = useState<ChatTurn[]>([
     {
       id: 'welcome',
       role: 'assistant',
-      text: 'Hi Lucian! 我是你的 BestLucky OS 面试 Copilot，随时问我任何岗位题型、JD 冲刺策略或知识库问题。',
+      text: 'Hi Lucian! 我已接入 Gemini Copilot，任何面试题、系统设计、英文表达或通用问题都可以直接问我。',
     },
   ]);
 
@@ -29,7 +32,12 @@ export function FloatingCopilotWidget() {
     const q = raw.trim();
     if (!q || loading) return;
     setInput('');
-    setTurns((prev) => [...prev, { id: `u-${Date.now()}`, role: 'user', text: q }]);
+    const nextUserTurn: ChatTurn = { id: `u-${Date.now()}`, role: 'user', text: q };
+    const historyPayload = [...turns, nextUserTurn]
+      .filter((t) => t.id !== 'welcome')
+      .slice(-8)
+      .map((t) => ({ role: t.role, text: t.text }));
+    setTurns((prev) => [...prev, nextUserTurn]);
     setLoading(true);
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -43,12 +51,19 @@ export function FloatingCopilotWidget() {
           action: 'dashboard_ask',
           model: state.aiSettings.model,
           language: state.aiSettings.language,
-          payload: { query: q },
+          payload: {
+            query: q,
+            history: historyPayload,
+          },
         }),
       });
       const json = (await res.json()) as {
+        mode?: 'live_gemini' | 'local_fallback';
         data?: { answer?: string; links?: Array<{ label: string; href: string }> };
       };
+      if (json.mode) {
+        setEngineMode(json.mode);
+      }
       setTurns((prev) => [
         ...prev,
         {
@@ -68,10 +83,19 @@ export function FloatingCopilotWidget() {
     }
   };
 
+  const handleSaveKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateAISettings({ geminiApiKey: keyDraft.trim() });
+    setShowKeyInput(false);
+    setEngineMode(keyDraft.trim() ? 'live_gemini' : 'unknown');
+  };
+
+  const isGeminiLive = Boolean(state.aiSettings.geminiApiKey.trim()) || engineMode === 'live_gemini';
+
   return (
     <div className="fixed right-5 bottom-5 z-50 flex flex-col items-end gap-3">
       {open && (
-        <div className="flex h-[480px] w-[370px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-[#ECECF2] bg-white shadow-2xl">
+        <div className="flex h-[490px] w-[380px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-[#ECECF2] bg-white shadow-2xl">
           {/* Header */}
           <div className="flex items-center justify-between bg-gradient-to-r from-[#4F46E5] via-[#6E32F5] to-[#8B5CF6] px-4 py-3 text-white">
             <div className="flex items-center gap-2">
@@ -79,27 +103,66 @@ export function FloatingCopilotWidget() {
                 <Sparkles className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-xs font-semibold">BestLucky Copilot</div>
-                <div className="text-[10px] text-white/80">
-                  {state.aiSettings.geminiApiKey.trim() ? 'Gemini Live Connected' : 'Instant Coach'}
+                <div className="text-xs font-semibold">BestLucky Gemini Copilot</div>
+                <div className="flex items-center gap-1.5 text-[10px] text-white/85">
+                  <span
+                    className={`inline-block h-1.5 w-1.5 rounded-full ${
+                      isGeminiLive ? 'bg-emerald-300' : 'bg-amber-300'
+                    }`}
+                  />
+                  {isGeminiLive ? 'Gemini Live · Ask Anything' : '点击右上角 🔑 连接 Gemini Key'}
                 </div>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="rounded-lg p-1 text-white/80 transition hover:bg-white/15 hover:text-white"
-              aria-label="Close Copilot"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setKeyDraft(state.aiSettings.geminiApiKey);
+                  setShowKeyInput((v) => !v);
+                }}
+                className="rounded-lg p-1.5 text-white/80 transition hover:bg-white/15 hover:text-white"
+                title="配置 Gemini API Key"
+              >
+                <KeyRound className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-lg p-1 text-white/80 transition hover:bg-white/15 hover:text-white"
+                aria-label="Close Copilot"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
+
+          {showKeyInput && (
+            <form
+              onSubmit={handleSaveKey}
+              className="flex items-center gap-2 border-b border-[#ECECF2] bg-[#F9F6FF] px-3 py-2"
+            >
+              <input
+                type="password"
+                value={keyDraft}
+                onChange={(e) => setKeyDraft(e.target.value)}
+                placeholder="粘贴 Gemini API Key (AIza...)"
+                className="flex-1 rounded-lg border border-[#D4C5FD] bg-white px-2.5 py-1 text-[11px] text-[#111118] focus:border-[#6E32F5] focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="rounded-lg bg-[#6E32F5] px-2.5 py-1 text-[11px] font-semibold text-white"
+              >
+                保存
+              </button>
+            </form>
+          )}
 
           {/* Quick Chips */}
           <div className="flex flex-wrap gap-1.5 border-b border-[#F2F2F7] bg-[#FAFAFC] px-3 py-2">
             {[
               'OpenAI FDE 30-60-90',
-              'NVIDIA TPM reverse Q&A',
+              '帮我润色一段英文自我介绍',
               'AI PM guardrails',
             ].map((chip) => (
               <button
@@ -121,7 +184,7 @@ export function FloatingCopilotWidget() {
                 className={`flex flex-col ${t.role === 'user' ? 'items-end' : 'items-start'}`}
               >
                 <div
-                  className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
+                  className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
                     t.role === 'user'
                       ? 'bg-[#6E32F5] text-white'
                       : 'border border-[#ECECF2] bg-[#FAFAFC] text-[#111118]'
@@ -139,7 +202,7 @@ export function FloatingCopilotWidget() {
                         className="inline-flex items-center gap-1 rounded-lg border border-[#6E32F5]/30 bg-[#F3ECFF] px-2 py-0.5 text-[11px] font-semibold text-[#6E32F5] hover:bg-[#6E32F5] hover:text-white"
                       >
                         {lnk.label}
-                        <ArrowRight className="h-2.5 w-2.5" />
+                        <ArrowRight className="h-3 w-3" />
                       </Link>
                     ))}
                   </div>
@@ -149,31 +212,31 @@ export function FloatingCopilotWidget() {
             {loading && (
               <div className="flex items-center gap-1.5 text-xs text-[#848494]">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-[#6E32F5]" />
-                Thinking...
+                Gemini 思考中...
               </div>
             )}
           </div>
 
-          {/* Composer */}
+          {/* Input */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               void sendQuery(input);
             }}
-            className="flex items-center gap-2 border-t border-[#ECECF2] bg-white p-3"
+            className="flex items-center gap-2 border-t border-[#ECECF2] bg-white p-2.5"
           >
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask anything about your interviews..."
+              placeholder="问我任何问题..."
               className="flex-1 rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-3 py-2 text-xs text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none"
             />
             <button
               type="submit"
-              disabled={loading || !input.trim()}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#6E32F5] text-white transition hover:bg-[#5B24D6] disabled:opacity-50"
-              aria-label="Send message"
+              disabled={!input.trim() || loading}
+              className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#6E32F5] text-white transition hover:bg-[#5B24D6] disabled:opacity-40"
+              aria-label="Send"
             >
               <Send className="h-3.5 w-3.5" />
             </button>
@@ -181,22 +244,21 @@ export function FloatingCopilotWidget() {
         </div>
       )}
 
-      {/* Floating Toggle Button */}
+      {/* Floating Launcher Pill */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label="Open BestLucky AI Copilot"
-        className="group flex h-12 items-center gap-2 rounded-full bg-gradient-to-r from-[#4F46E5] via-[#6E32F5] to-[#8B5CF6] px-4 text-xs font-semibold text-white shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+        className="inline-flex items-center gap-2 rounded-full bg-[#6E32F5] px-4 py-3 text-xs font-semibold text-white shadow-lg transition hover:bg-[#5B24D6]"
       >
         {open ? (
           <>
             <X className="h-4 w-4" />
-            <span>Close</span>
+            Close
           </>
         ) : (
           <>
             <MessageSquare className="h-4 w-4" />
-            <span>AI Copilot</span>
+            AI Copilot
           </>
         )}
       </button>

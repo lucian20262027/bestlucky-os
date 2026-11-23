@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -18,11 +18,11 @@ import {
   Layers,
   Menu,
   MessageSquare,
+  RefreshCw,
   Rocket,
   Search,
   Settings,
   Sparkles,
-  Star,
   Target,
   Video,
   Wand2,
@@ -85,22 +85,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const hasLiveKey = state.aiSettings.geminiApiKey.trim().length > 0;
   const isMockRoomRoute = pathname.startsWith('/practice/') && pathname !== '/practice';
-
-  const completedCount = useMemo(() => {
-    if (!mounted) return 0;
-    let total = 0;
-    ROLE_LIST.forEach((r) => {
-      const c = state.courses[r.id];
-      c?.modules.forEach((m) =>
-        m.subSections.forEach((s) =>
-          s.lessons.forEach((l) => {
-            if (l.completed) total++;
-          })
-        )
-      );
-    });
-    return total + state.sessions.length;
-  }, [mounted, state.courses, state.sessions.length]);
 
   const navItemClass = (active: boolean) =>
     `group flex w-full items-center justify-between rounded-xl px-3 py-2 text-[13.5px] transition ${
@@ -337,7 +321,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
       </div>
 
-      {/* Bottom Profile & Settings Bar (Aced-style footer) */}
+      {/* Bottom Profile & Settings Bar */}
       <div className="mt-3 space-y-2 border-t border-[#ECECF2] pt-3">
         <button
           type="button"
@@ -348,48 +332,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F3ECFF] text-xs font-bold text-[#6E32F5]">
               {state.profile.name.slice(0, 2).toUpperCase()}
             </div>
-            <div>
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-[#111118]">
-                <span>{state.profile.name}</span>
-                <span className="inline-flex items-center gap-0.5 rounded-md bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-amber-800">
-                  <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-500" />
-                  <span suppressHydrationWarning>{mounted ? completedCount : 0}</span>
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 text-[10px] text-[#848494]">
-                {hasLiveKey ? (
-                  <>
-                    <Sparkles className="h-2.5 w-2.5 text-[#6E32F5]" />
-                    Gemini 4 Live
-                  </>
-                ) : (
-                  <>Local Coach</>
-                )}
-                <span className="text-[#D4D4DF]">·</span>
-                <span
-                  suppressHydrationWarning
-                  className={
-                    syncStatus === 'synced'
-                      ? 'font-medium text-emerald-600'
-                      : syncStatus === 'syncing'
-                        ? 'font-medium text-[#6E32F5]'
-                        : syncStatus === 'error'
-                          ? 'font-medium text-rose-600'
-                          : 'text-[#848494]'
-                  }
-                >
-                  {syncStatus === 'synced'
-                    ? 'Cloud Synced'
-                    : syncStatus === 'syncing'
-                      ? 'Syncing...'
-                      : syncStatus === 'error'
-                        ? 'Sync Error'
-                        : 'Local Only'}
-                </span>
-              </div>
-            </div>
+            <span className="text-xs font-semibold text-[#111118]">
+              {state.profile.name}
+            </span>
           </div>
-          <Settings className="h-4 w-4 text-[#848494]" />
+          <div className="flex items-center gap-2">
+            <span
+              suppressHydrationWarning
+              title={
+                syncStatus === 'synced'
+                  ? 'Cloud Synced'
+                  : syncStatus === 'error'
+                    ? 'Sync Attention Needed'
+                    : 'Not Synced / Local Only'
+              }
+              className={`inline-flex items-center justify-center ${
+                syncStatus === 'synced'
+                  ? 'text-emerald-600'
+                  : syncStatus === 'error'
+                    ? 'text-rose-600'
+                    : syncStatus === 'syncing'
+                      ? 'animate-spin text-amber-500'
+                      : 'text-amber-500'
+              }`}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </span>
+            <Settings className="h-4 w-4 text-[#848494]" />
+          </div>
         </button>
       </div>
     </div>

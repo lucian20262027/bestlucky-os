@@ -302,7 +302,10 @@ export async function POST(req: NextRequest) {
       const links: Array<{ label: string; href: string }> = [];
       let answer = '';
 
-      if (lower.includes('openai') || lower.includes('anthropic') || lower.includes('palantir') || lower.includes('nvidia') || lower.includes('jd') || lower.includes('role')) {
+      if (/^(hi|hello|hey|你好|哈喽|嗨)[!！.\s]*$/i.test(lower)) {
+        answer =
+          'Hi Lucian! 我是你的 BestLucky Gemini Copilot。目前处于本地兜底模式，点击右上角 🔑 填入 Gemini API Key（或在 Vercel 环境变量配置 GEMINI_API_KEY）后，你就可以在这里问我任何问题（技术、产品、英文表达、面试或日常问题都可以）！';
+      } else if (lower.includes('openai') || lower.includes('anthropic') || lower.includes('palantir') || lower.includes('nvidia') || lower.includes('jd') || lower.includes('role')) {
         answer = `针对 "${q}"：建议先用「JD Study Plan」粘贴目标岗位 JD 生成专属冲刺题单，并在「7-Role Playbook」切换对应思维模式（如 FDE 强调 Week-2 垂直切片交付，AI PM 强调 Eval 护栏与路由治理）。`;
         links.push({ label: '生成 JD 定制冲刺计划', href: '/customizer' });
         links.push({ label: '查看 7-Role 岗位思维卡', href: '/frameworks' });
@@ -628,14 +631,23 @@ Return strict JSON:
       if (!q) {
         return NextResponse.json({ error: 'Query is required' }, { status: 400 });
       }
+      const history = Array.isArray(payload.history)
+        ? (payload.history as Array<{ role: string; text: string }>).slice(-8)
+        : [];
+      const historyText = history
+        .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`)
+        .join('\n');
+
       const interaction = await ai.interactions.create({
         model: chosenModel,
-        input: `You are Lucian's personal Interview Copilot inside LoopOS (targeting FDE, FDPM, AI PM, PM, Operations, Program Manager, Consulting roles at Anthropic, OpenAI, Palantir, NVIDIA, Stripe, McKinsey).
-User question: "${q}"
+        input: `You are Lucian's personal AI Assistant (powered by Gemini) inside BestLucky OS.
+You can answer ANY question Lucian asks — general knowledge, coding, system design, product strategy, English phrasing, career advice, or interview prep — clearly, accurately, and conversationally.
+${historyText ? `\nRecent Conversation:\n${historyText}\n` : ''}
+Current User Message: "${q}"
 ${getLangInstruction(language)}
 Return strict JSON:
-- answer: Crisp, actionable 2-4 sentence answer directly addressing the user's question with concrete interview tactics.
-- links: 2-3 relevant internal navigation links chosen ONLY from: [{"label": "...", "href": "/questions"}, {"label": "...", "href": "/customizer"}, {"label": "...", "href": "/knowledge"}, {"label": "...", "href": "/frameworks"}, {"label": "...", "href": "/stories"}, {"label": "...", "href": "/practice"}]`,
+- answer: Helpful, direct, well-structured answer addressing the user's exact question (no generic boilerplate).
+- links: 0 to 2 relevant BestLucky OS links ONLY if directly helpful, chosen from: [{"label": "...", "href": "/questions"}, {"label": "...", "href": "/customizer"}, {"label": "...", "href": "/knowledge"}, {"label": "...", "href": "/frameworks"}, {"label": "...", "href": "/stories"}, {"label": "...", "href": "/practice"}]; otherwise return [].`,
         response_mime_type: 'application/json',
         response_format: {
           type: 'object',
