@@ -103,7 +103,7 @@ export function FloatingCopilotWidget() {
                 <Sparkles className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-xs font-semibold">BestLucky Gemini Copilot</div>
+                <div className="text-xs font-semibold">Lucky Bot</div>
                 <div className="flex items-center gap-1.5 text-[10px] text-white/85">
                   <span
                     className={`inline-block h-1.5 w-1.5 rounded-full ${
@@ -299,7 +299,7 @@ export function FloatingCopilotWidget() {
               </text>
               <rect x="14" y="48" width="36" height="2.4" rx="1.2" fill="url(#bl-copilot-star-gold)" opacity="0.92" />
             </svg>
-            AI Copilot
+            Lucky Bot
           </>
         )}
       </button>

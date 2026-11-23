@@ -162,7 +162,7 @@ export function TodoWorkspacePanel({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-[#111118]">Prep Task Command</h2>
+              <h2 className="text-base font-semibold text-[#111118]">Lucky To-Do</h2>
               <span
                 suppressHydrationWarning
                 className="rounded-full bg-[#F3ECFF] px-2.5 py-0.5 text-[11px] font-semibold text-[#6E32F5]"
