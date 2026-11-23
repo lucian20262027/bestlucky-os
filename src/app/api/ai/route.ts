@@ -20,9 +20,11 @@ import {
   RoundType,
 } from '@/lib/types';
 
-const ALLOWED_MODELS: Record<string, GeminiModelChoice> = {
-  'gemini-4-hydrogen': 'gemini-4-hydrogen',
-  'gemini-4-argon': 'gemini-4-argon',
+const ALLOWED_MODELS: Record<string, string> = {
+  'gemini-4-hydrogen': 'gemini-2.5-flash',
+  'gemini-4-argon': 'gemini-2.5-pro',
+  'gemini-2.5-flash': 'gemini-2.5-flash',
+  'gemini-2.5-pro': 'gemini-2.5-pro',
 };
 
 function stripCodeFences(raw: string): string {
@@ -73,10 +75,10 @@ export async function POST(req: NextRequest) {
   const action = body.action;
   const language: LanguageMode = body.language ?? 'bilingual';
   const payload = body.payload ?? {};
-  const chosenModel: GeminiModelChoice =
+  const chosenModel: string =
     ALLOWED_MODELS[body.model ?? ''] ??
     ALLOWED_MODELS[process.env.GEMINI_MODEL ?? ''] ??
-    'gemini-4-hydrogen';
+    'gemini-2.5-flash';
 
   const headerKey = req.headers.get('x-gemini-api-key')?.trim();
   const envKey = process.env.GEMINI_API_KEY?.trim();

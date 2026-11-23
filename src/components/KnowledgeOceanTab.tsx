@@ -117,6 +117,8 @@ export default function KnowledgeOceanTab({
         }),
       });
       const json = (await res.json()) as {
+        mode?: 'live_gemini' | 'local_fallback';
+        warning?: string;
         data?: {
           summary: string;
           takeaways: string[];
@@ -137,6 +139,9 @@ export default function KnowledgeOceanTab({
       if (!res.ok || !json.data) {
         setNotice(json.error || '分析失败，请稍后重试');
         return;
+      }
+      if (json.warning) {
+        setNotice(json.warning);
       }
 
       const nextArticle: KnowledgeArticle = {
