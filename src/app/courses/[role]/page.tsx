@@ -598,13 +598,6 @@ function CourseSyllabusContent() {
           return (
             <section
               key={mod.id}
-              draggable={!editMode && !expandedLessonId}
-              onDragStart={(e) => {
-                if (editMode || expandedLessonId) return;
-                setDraggingModuleId(mod.id);
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', `mod:${mod.id}`);
-              }}
               onDragOver={(e) => {
                 if (!draggingModuleId || draggingModuleId === mod.id) return;
                 e.preventDefault();
@@ -621,10 +614,6 @@ function CourseSyllabusContent() {
                 setDraggingModuleId(null);
                 setDragOverModuleId(null);
               }}
-              onDragEnd={() => {
-                setDraggingModuleId(null);
-                setDragOverModuleId(null);
-              }}
               data-testid={`course-module-card-${mod.id}`}
               className={`rounded-3xl border bg-white p-6 shadow-[0_1px_2px_rgba(16,16,24,0.03)] transition sm:p-7 ${
                 dragOverModuleId === mod.id
@@ -633,7 +622,21 @@ function CourseSyllabusContent() {
               }`}
             >
               {/* Module Big Title Header */}
-              <div className="flex flex-wrap items-start justify-between gap-3">
+              <div
+                draggable={!editMode && !expandedLessonId}
+                onDragStart={(e) => {
+                  if (editMode || expandedLessonId) return;
+                  setDraggingModuleId(mod.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', `mod:${mod.id}`);
+                }}
+                onDragEnd={() => {
+                  setDraggingModuleId(null);
+                  setDragOverModuleId(null);
+                }}
+                data-testid={`course-module-drag-handle-${mod.id}`}
+                className="flex flex-wrap items-start justify-between gap-3"
+              >
                 <div className="min-w-0 flex-1">
                   {editMode ? (
                     <div className="space-y-2.5 rounded-2xl border border-[#D4C5FD] bg-[#FAF9FF] p-4">
