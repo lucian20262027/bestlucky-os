@@ -3,6 +3,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { cleanHtmlForReader } from '@/lib/html-parser';
 import {
+  deleteHtmlSnapshot,
+  saveHtmlSnapshot,
+} from '@/lib/html-snapshot-db';
+import {
   createDefaultState,
   exportStateAsJson,
   loadAppState,
@@ -254,8 +258,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (json.state) {
           const parsed = parseImportedState(JSON.stringify(json.state));
           if (parsed && !cancelled) {
-            setState(parsed);
-            saveAppState(parsed);
+            const localPagesById = new Map(
+              (loaded.deployedHtmlPages ?? []).map((p) => [p.id, p])
+            );
+            const mergedPages = (parsed.deployedHtmlPages ?? []).map((cp) => {
+              const lp = localPagesById.get(cp.id);
+              if (lp && lp.rawHtml.length > cp.rawHtml.length) {
+                return { ...cp, rawHtml: lp.rawHtml };
+              }
+              return cp;
+            });
+            const mergedState = { ...parsed, deployedHtmlPages: mergedPages };
+            setState(mergedState);
+            saveAppState(mergedState);
           }
           setSyncStatus('synced');
           setLastSyncedAt(json.updatedAt ?? null);
@@ -872,6 +887,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const deployHtmlPage = useCallback(
     (page: Omit<DeployedHtmlPage, 'id' | 'createdAt' | 'updatedAt'>): DeployedHtmlPage => {
       const now = new Date().toISOString();
+      const id = `html-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      // Save 100% lossless full HTML (with all embedded images) to IndexedDB
+      void saveHtmlSnapshot(id, page.rawHtml);
       const compactHtml =
         page.rawHtml.length > 180_000
           ? cleanHtmlForReader(page.rawHtml).cleanHtml
@@ -879,7 +897,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const created: DeployedHtmlPage = {
         ...page,
         rawHtml: compactHtml,
-        id: `html-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id,
         createdAt: now,
         updatedAt: now,
       };
@@ -894,6 +912,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deleteHtmlPage = useCallback(
     (id: string) => {
+      void deleteHtmlSnapshot(id);
       commit((prev) => ({
         ...prev,
         deployedHtmlPages: (prev.deployedHtmlPages ?? []).filter((p) => p.id !== id),
@@ -905,6 +924,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const updateHtmlPage = useCallback(
     (id: string, patch: Partial<DeployedHtmlPage>) => {
       const now = new Date().toISOString();
+      if (patch.rawHtml) {
+        void saveHtmlSnapshot(id, patch.rawHtml);
+      }
       commit((prev) => ({
         ...prev,
         deployedHtmlPages: (prev.deployedHtmlPages ?? []).map((p) =>

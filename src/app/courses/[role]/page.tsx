@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -32,6 +32,7 @@ import { TypographyPicker } from '@/components/TypographyPicker';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import { roleBadgeClasses } from '@/lib/helpers';
 import { cleanHtmlForReader, extractReadableTextFromHtml } from '@/lib/html-parser';
+import { getHtmlSnapshot } from '@/lib/html-snapshot-db';
 import { saveLocalMedia } from '@/lib/media-db';
 import { ROLES_BY_ID } from '@/lib/roles';
 import { SELF_INTRO_COURSE_META } from '@/lib/seed-courses';
@@ -74,6 +75,7 @@ function CourseSyllabusContent() {
   const [editMode, setEditMode] = useState(false);
   const [collapsedSubs, setCollapsedSubs] = useState<Record<string, boolean>>({});
   const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
+  const [expandedSnapshotHtml, setExpandedSnapshotHtml] = useState<string | null>(null);
   const [draggingModuleId, setDraggingModuleId] = useState<string | null>(null);
   const [dragOverModuleId, setDragOverModuleId] = useState<string | null>(null);
   const [draggingLesson, setDraggingLesson] = useState<{
@@ -105,6 +107,28 @@ function CourseSyllabusContent() {
     (state.deployedHtmlPages ?? []).forEach((p) => map.set(p.id, p));
     return map;
   }, [state.deployedHtmlPages]);
+
+  useEffect(() => {
+    if (!expandedLessonId) {
+      setExpandedSnapshotHtml(null);
+      return;
+    }
+    const foundLesson = course.modules
+      .flatMap((m) => m.subSections.flatMap((s) => s.lessons))
+      .find((l) => l.id === expandedLessonId);
+    const pageId = foundLesson?.htmlPageId;
+    if (!pageId) {
+      setExpandedSnapshotHtml(null);
+      return;
+    }
+    let cancelled = false;
+    void getHtmlSnapshot(pageId).then((snap) => {
+      if (!cancelled) setExpandedSnapshotHtml(snap);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [expandedLessonId, course.modules]);
 
   const flatLessons = useMemo(() => {
     const list: Array<{
@@ -1140,7 +1164,14 @@ function CourseSyllabusContent() {
                                     <div className="overflow-hidden rounded-2xl border border-[#ECECF2] bg-white shadow-2xs">
                                       <iframe
                                         title={htmlPage.title}
-                                        srcDoc={cleanHtmlForReader(htmlPage.rawHtml).cleanHtml}
+                                        srcDoc={
+                                          cleanHtmlForReader(
+                                            expandedSnapshotHtml &&
+                                              expandedSnapshotHtml.length > htmlPage.rawHtml.length
+                                              ? expandedSnapshotHtml
+                                              : htmlPage.rawHtml
+                                          ).cleanHtml
+                                        }
                                         sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                                         className="min-h-[68vh] w-full border-0 bg-white"
                                       />

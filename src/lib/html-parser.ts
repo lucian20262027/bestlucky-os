@@ -424,6 +424,16 @@ export function cleanHtmlForReader(
     if (!img.style.height) img.style.height = 'auto';
   });
 
+  // Also unwrap or remove <picture><source srcset="/_next/image..."> that can override fixed <img>
+  doc.querySelectorAll('picture source').forEach((source) => {
+    const ss = source.getAttribute('srcset') ?? '';
+    if (ss.includes('/_next/image')) {
+      source.remove();
+    } else if (ss.startsWith('/') && sourceOrigin) {
+      source.setAttribute('srcset', `${sourceOrigin}${ss}`);
+    }
+  });
+
   // Assign stable IDs to h2/h3 headings for right-rail Lesson contents TOC
   const headings: HtmlHeadingItem[] = [];
   const headingRoot = mainContent ?? doc.body;

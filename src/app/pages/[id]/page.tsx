@@ -29,6 +29,7 @@ import {
   extractReadableTextFromHtml,
   toYouTubeEmbedUrl,
 } from '@/lib/html-parser';
+import { getHtmlSnapshot } from '@/lib/html-snapshot-db';
 import { getLocalMediaBlob, saveLocalMedia } from '@/lib/media-db';
 import { ROLE_LIST } from '@/lib/roles';
 import type { CourseTrackId, DeployedHtmlPage } from '@/lib/types';
@@ -61,6 +62,7 @@ export default function DeployedHtmlPageViewer() {
 
   const [titleDraft, setTitleDraft] = useState('');
   const [moduleDraft, setModuleDraft] = useState('');
+  const [fullSnapshotHtml, setFullSnapshotHtml] = useState<string | null>(null);
 
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
@@ -72,10 +74,28 @@ export default function DeployedHtmlPageViewer() {
     return allPages.find((p) => p.id === params.id) ?? null;
   }, [allPages, params.id]);
 
+  useEffect(() => {
+    if (!page?.id) {
+      setFullSnapshotHtml(null);
+      return;
+    }
+    let cancelled = false;
+    void getHtmlSnapshot(page.id).then((snap) => {
+      if (!cancelled) setFullSnapshotHtml(snap);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [page?.id]);
+
+  const effectiveRawHtml = fullSnapshotHtml && fullSnapshotHtml.length > (page?.rawHtml.length ?? 0)
+    ? fullSnapshotHtml
+    : page?.rawHtml ?? '';
+
   const cleanedReader = useMemo(() => {
     if (!page) return { cleanHtml: '', strippedShell: false, headings: [] };
-    return cleanHtmlForReader(page.rawHtml, { editable: editArticleMode });
-  }, [page, editArticleMode]);
+    return cleanHtmlForReader(effectiveRawHtml, { editable: editArticleMode });
+  }, [page, effectiveRawHtml, editArticleMode]);
 
   // Group all HTML pages by moduleTitle for the left Aced-style directory
   const groupedDirectory = useMemo(() => {
@@ -642,7 +662,7 @@ export default function DeployedHtmlPageViewer() {
             <iframe
               ref={iframeRef}
               title={page.title}
-              srcDoc={cleanMode ? cleanedReader.cleanHtml : page.rawHtml}
+              srcDoc={cleanMode ? cleanedReader.cleanHtml : effectiveRawHtml}
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
               className="min-h-[80vh] w-full border-0 bg-white"
               data-testid="html-reader-iframe"
