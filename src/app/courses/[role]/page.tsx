@@ -5,12 +5,15 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
   ArrowDown,
+  ArrowLeft,
+  ArrowRight,
   ArrowUp,
   BookOpen,
   Check,
   ChevronDown,
   ChevronRight,
   Edit3,
+  ExternalLink,
   FileText,
   Film,
   LayoutGrid,
@@ -27,6 +30,7 @@ import { useApp } from '@/components/AppProvider';
 import { TypographyPicker } from '@/components/TypographyPicker';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import { roleBadgeClasses } from '@/lib/helpers';
+import { cleanHtmlForReader, extractReadableTextFromHtml } from '@/lib/html-parser';
 import { saveLocalMedia } from '@/lib/media-db';
 import { ROLES_BY_ID } from '@/lib/roles';
 import { SELF_INTRO_COURSE_META } from '@/lib/seed-courses';
@@ -68,6 +72,7 @@ function CourseSyllabusContent() {
 
   const [editMode, setEditMode] = useState(false);
   const [collapsedSubs, setCollapsedSubs] = useState<Record<string, boolean>>({});
+  const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
   const [addingTarget, setAddingTarget] = useState<{
     moduleId: string;
     subSectionId: string;
@@ -85,6 +90,42 @@ function CourseSyllabusContent() {
   const [uploadingIntro, setUploadingIntro] = useState(false);
 
   const course = state.courses[role];
+
+  const htmlPagesById = useMemo(() => {
+    const map = new Map<string, NonNullable<typeof state.deployedHtmlPages>[number]>();
+    (state.deployedHtmlPages ?? []).forEach((p) => map.set(p.id, p));
+    return map;
+  }, [state.deployedHtmlPages]);
+
+  const flatLessons = useMemo(() => {
+    const list: Array<{
+      lesson: CourseLessonItem;
+      moduleId: string;
+      subSectionId: string;
+    }> = [];
+    course.modules.forEach((m) =>
+      m.subSections.forEach((s) =>
+        s.lessons.forEach((l) =>
+          list.push({ lesson: l, moduleId: m.id, subSectionId: s.id })
+        )
+      )
+    );
+    return list;
+  }, [course.modules]);
+
+  const jumpToLesson = (item: {
+    lesson: CourseLessonItem;
+    moduleId: string;
+    subSectionId: string;
+  }) => {
+    setCollapsedSubs((prev) => ({ ...prev, [item.subSectionId]: false }));
+    setExpandedLessonId(item.lesson.id);
+    window.setTimeout(() => {
+      document
+        .getElementById(`course-lesson-${item.lesson.id}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+  };
   const roleCfg =
     role === 'self-intro'
       ? {
@@ -739,99 +780,258 @@ function CourseSyllabusContent() {
                       {!isCollapsed && (
                         <div className="divide-y divide-[#F0F0F5]">
                           {sub.lessons.map((les) => {
+                            const htmlPage = les.htmlPageId
+                              ? htmlPagesById.get(les.htmlPageId) ?? null
+                              : null;
                             const isVideo =
-                              les.kind === 'video' || Boolean(les.videoUrl || les.localMediaId);
-                            const targetHref = les.htmlPageId
-                              ? `/pages/${les.htmlPageId}`
-                              : les.questionId
-                                ? `/questions/${les.questionId}`
-                                : `/questions`;
+                              les.kind === 'video' ||
+                              Boolean(
+                                htmlPage?.videoUrl ||
+                                  htmlPage?.localMediaId ||
+                                  les.videoUrl ||
+                                  les.localMediaId
+                              );
+                            const isInlineExpandable = Boolean(htmlPage);
+                            const isExpanded = expandedLessonId === les.id;
+                            const targetHref = les.questionId
+                              ? `/questions/${les.questionId}`
+                              : `/questions`;
 
-                            return (
-                              <div
-                                key={les.id}
-                                className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-[#FAFAFC]"
-                              >
-                                <Link
-                                  href={targetHref}
-                                  className="flex min-w-0 flex-1 items-center gap-3.5"
-                                >
-                                  {isVideo ? (
-                                    <div className="relative flex h-11 w-[74px] shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#1C1A29] to-[#2F284D]">
-                                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#6E32F5] text-white">
-                                        <Play className="ml-0.5 h-3 w-3 fill-white" />
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F5F5FA] text-[#525260]">
-                                      {les.kind === 'question' ? (
-                                        <Sparkles className="h-3.5 w-3.5 text-[#6E32F5]" />
-                                      ) : (
-                                        <FileText className="h-3.5 w-3.5" />
-                                      )}
-                                    </div>
-                                  )}
+                            const displaySummary = htmlPage
+                              ? extractReadableTextFromHtml(htmlPage.rawHtml).text.slice(0, 180)
+                              : les.summary;
 
-                                  <div className="min-w-0">
-                                    <div className="truncate text-[13.5px] font-medium text-[#111118] hover:text-[#6E32F5]">
-                                      {les.title}
+                            const flatIdx = flatLessons.findIndex(
+                              (item) => item.lesson.id === les.id
+                            );
+                            const prevEntry = flatIdx > 0 ? flatLessons[flatIdx - 1] : null;
+                            const nextEntry =
+                              flatIdx >= 0 && flatIdx < flatLessons.length - 1
+                                ? flatLessons[flatIdx + 1]
+                                : null;
+
+                            const rowContent = (
+                              <>
+                                {isVideo ? (
+                                  <div className="relative flex h-11 w-[74px] shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#1C1A29] to-[#2F284D]">
+                                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#6E32F5] text-white">
+                                      <Play className="ml-0.5 h-3 w-3 fill-white" />
                                     </div>
-                                    {les.summary && (
-                                      <div className="truncate text-xs text-[#848494]">
-                                        {les.summary}
-                                      </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F5F5FA] text-[#525260]">
+                                    {les.kind === 'question' ? (
+                                      <Sparkles className="h-3.5 w-3.5 text-[#6E32F5]" />
+                                    ) : (
+                                      <FileText className="h-3.5 w-3.5" />
                                     )}
                                   </div>
-                                </Link>
+                                )}
 
-                                <div className="flex shrink-0 items-center gap-2">
-                                  {editMode && (
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-[13.5px] font-medium text-[#111118] hover:text-[#6E32F5]">
+                                    {les.title}
+                                  </div>
+                                  {displaySummary && (
+                                    <div className="truncate text-xs text-[#848494]">
+                                      {displaySummary}
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            );
+
+                            return (
+                              <div key={les.id} id={`course-lesson-${les.id}`}>
+                                <div className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-[#FAFAFC]">
+                                  {isInlineExpandable ? (
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        saveCourse({
-                                          ...course,
-                                          modules: course.modules.map((m) =>
-                                            m.id !== mod.id
-                                              ? m
-                                              : {
-                                                  ...m,
-                                                  subSections: m.subSections.map((s) =>
-                                                    s.id !== sub.id
-                                                      ? s
-                                                      : {
-                                                          ...s,
-                                                          lessons: s.lessons.filter(
-                                                            (l) => l.id !== les.id
-                                                          ),
-                                                        }
-                                                  ),
-                                                }
-                                          ),
-                                        })
+                                        setExpandedLessonId((prev) =>
+                                          prev === les.id ? null : les.id
+                                        )
                                       }
-                                      className="rounded p-1 text-[#848494] hover:text-rose-600"
-                                      title="Remove item"
+                                      data-testid={`course-lesson-toggle-${les.id}`}
+                                      className="flex min-w-0 flex-1 items-center gap-3.5 text-left"
                                     >
-                                      <Trash2 className="h-3.5 w-3.5" />
+                                      {rowContent}
                                     </button>
+                                  ) : (
+                                    <Link
+                                      href={targetHref}
+                                      className="flex min-w-0 flex-1 items-center gap-3.5"
+                                    >
+                                      {rowContent}
+                                    </Link>
                                   )}
 
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      toggleCourseLessonComplete(role, mod.id, sub.id, les.id)
-                                    }
-                                    className={`flex h-6 w-6 items-center justify-center rounded-full transition ${
-                                      les.completed
-                                        ? 'bg-[#F3ECFF] text-[#6E32F5]'
-                                        : 'border border-[#E2E2EC] text-transparent hover:border-[#6E32F5]'
-                                    }`}
-                                    title="Toggle complete"
-                                  >
-                                    <Check className="h-3.5 w-3.5" />
-                                  </button>
+                                  <div className="flex shrink-0 items-center gap-2">
+                                    {isInlineExpandable && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setExpandedLessonId((prev) =>
+                                            prev === les.id ? null : les.id
+                                          )
+                                        }
+                                        className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#6E32F5] transition hover:border-[#6E32F5]"
+                                      >
+                                        {isExpanded ? '收起' : '展开阅读'}
+                                      </button>
+                                    )}
+                                    {editMode && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          saveCourse({
+                                            ...course,
+                                            modules: course.modules.map((m) =>
+                                              m.id !== mod.id
+                                                ? m
+                                                : {
+                                                    ...m,
+                                                    subSections: m.subSections.map((s) =>
+                                                      s.id !== sub.id
+                                                        ? s
+                                                        : {
+                                                            ...s,
+                                                            lessons: s.lessons.filter(
+                                                              (l) => l.id !== les.id
+                                                            ),
+                                                          }
+                                                    ),
+                                                  }
+                                            ),
+                                          })
+                                        }
+                                        className="rounded p-1 text-[#848494] hover:text-rose-600"
+                                        title="Remove item"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        toggleCourseLessonComplete(role, mod.id, sub.id, les.id)
+                                      }
+                                      className={`flex h-6 w-6 items-center justify-center rounded-full transition ${
+                                        les.completed
+                                          ? 'bg-[#F3ECFF] text-[#6E32F5]'
+                                          : 'border border-[#E2E2EC] text-transparent hover:border-[#6E32F5]'
+                                      }`}
+                                      title="Toggle complete"
+                                    >
+                                      <Check className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
                                 </div>
+
+                                {/* Inline Expanded Article + Video + Prev/Next */}
+                                {isExpanded && htmlPage && (
+                                  <div
+                                    className="border-t border-[#ECECF2] bg-[#FAFAFC] px-4 py-4 space-y-4"
+                                    data-testid="course-inline-reader"
+                                  >
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <span className="rounded-md bg-[#F3ECFF] px-2 py-0.5 text-[10px] font-bold text-[#6E32F5]">
+                                          本页阅读
+                                        </span>
+                                        <span className="text-xs font-semibold text-[#111118]">
+                                          {htmlPage.title}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <Link
+                                          href={`/pages/${htmlPage.id}`}
+                                          className="inline-flex items-center gap-1 rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#525260] hover:border-[#6E32F5] hover:text-[#6E32F5]"
+                                        >
+                                          在 Studio 编辑 / 挂载视频
+                                          <ExternalLink className="h-3 w-3" />
+                                        </Link>
+                                        <button
+                                          type="button"
+                                          onClick={() => setExpandedLessonId(null)}
+                                          className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#525260] hover:text-[#111118]"
+                                        >
+                                          收起全文
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {(htmlPage.videoUrl ||
+                                      htmlPage.localMediaId ||
+                                      les.videoUrl ||
+                                      les.localMediaId) && (
+                                      <VideoPlayer
+                                        videoUrl={htmlPage.videoUrl || les.videoUrl}
+                                        localMediaId={htmlPage.localMediaId || les.localMediaId}
+                                      />
+                                    )}
+
+                                    <div className="overflow-hidden rounded-2xl border border-[#ECECF2] bg-white shadow-2xs">
+                                      <iframe
+                                        title={htmlPage.title}
+                                        srcDoc={cleanHtmlForReader(htmlPage.rawHtml).cleanHtml}
+                                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                                        className="min-h-[68vh] w-full border-0 bg-white"
+                                      />
+                                    </div>
+
+                                    {/* Bottom Prev / Next Navigation */}
+                                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                                      <button
+                                        type="button"
+                                        disabled={!prevEntry}
+                                        onClick={() => prevEntry && jumpToLesson(prevEntry)}
+                                        data-testid="course-prev-lesson"
+                                        className="inline-flex items-center gap-1.5 rounded-xl border border-[#ECECF2] bg-white px-3.5 py-2 text-xs font-semibold text-[#111118] shadow-2xs transition hover:border-[#6E32F5] hover:text-[#6E32F5] disabled:cursor-not-allowed disabled:opacity-40"
+                                      >
+                                        <ArrowLeft className="h-3.5 w-3.5" />
+                                        前一篇
+                                        {prevEntry && (
+                                          <span className="max-w-[160px] truncate text-[11px] font-normal text-[#848494]">
+                                            · {prevEntry.lesson.title}
+                                          </span>
+                                        )}
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          toggleCourseLessonComplete(role, mod.id, sub.id, les.id)
+                                        }
+                                        className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
+                                          les.completed
+                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                            : 'border border-[#ECECF2] bg-white text-[#525260] hover:border-[#6E32F5]'
+                                        }`}
+                                      >
+                                        <Check className="h-3.5 w-3.5" />
+                                        {les.completed ? '已完成本节' : '标记已完成'}
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        disabled={!nextEntry}
+                                        onClick={() => nextEntry && jumpToLesson(nextEntry)}
+                                        data-testid="course-next-lesson"
+                                        className="inline-flex items-center gap-1.5 rounded-xl bg-[#6E32F5] px-3.5 py-2 text-xs font-semibold text-white shadow-2xs transition hover:bg-[#5B24D6] disabled:cursor-not-allowed disabled:opacity-40"
+                                      >
+                                        下一篇
+                                        {nextEntry && (
+                                          <span className="max-w-[160px] truncate text-[11px] font-normal text-white/80">
+                                            · {nextEntry.lesson.title}
+                                          </span>
+                                        )}
+                                        <ArrowRight className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
