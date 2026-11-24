@@ -306,18 +306,18 @@ export async function POST(req: NextRequest) {
 
       if (/^(hi|hello|hey|你好|哈喽|嗨)[!！.\s]*$/i.test(lower)) {
         answer =
-          'Hi Lucian! 我是你的 BestLucky Gemini Copilot。目前处于本地兜底模式，点击右上角 🔑 填入 Gemini API Key（或在 Vercel 环境变量配置 GEMINI_API_KEY）后，你就可以在这里问我任何问题（技术、产品、英文表达、面试或日常问题都可以）！';
+          'Hi Lucian! 我是你的 Lucky Bot。目前处于本地兜底模式，点击右上角 🔑 填入 Gemini API Key（或在 Vercel 环境变量配置 GEMINI_API_KEY）后，你就可以在这里问我任何问题（技术、产品、英文表达、面试或日常问题都可以）！';
       } else if (lower.includes('openai') || lower.includes('anthropic') || lower.includes('palantir') || lower.includes('nvidia') || lower.includes('jd') || lower.includes('role')) {
-        answer = `针对 "${q}"：建议先用「JD Study Plan」粘贴目标岗位 JD 生成专属冲刺题单，并在「7-Role Playbook」切换对应思维模式（如 FDE 强调 Week-2 垂直切片交付，AI PM 强调 Eval 护栏与路由治理）。`;
+        answer = `针对 "${q}"：建议先用「JD Study Plan」粘贴目标岗位 JD 生成专属冲刺题单，并在「Courses」切换对应赛道大纲（如 FDE 强调 Week-2 垂直切片交付，AI PM 强调 Eval 护栏与路由治理）。`;
         links.push({ label: '生成 JD 定制冲刺计划', href: '/customizer' });
-        links.push({ label: '查看 7-Role 岗位思维卡', href: '/frameworks' });
+        links.push({ label: '查看 7 赛道课程大纲', href: '/courses' });
       } else if (lower.includes('soundbite') || lower.includes('vocab') || lower.includes('单词') || lower.includes('金句') || lower.includes('knowledge')) {
-        answer = `你可以在 Knowledge Hub 中复习 3 条高频 AI 架构/反问金句，并使用单词本的一键发音功能跟读难词。`;
+        answer = `你可以在 Knowledge Hub 中复习高频 AI 架构/反问金句，并使用单词本的一键发音功能跟读难词。`;
         links.push({ label: '打开 Knowledge Hub', href: '/knowledge' });
       } else if (lower.includes('lark') || lower.includes('飞书') || lower.includes('video') || lower.includes('story')) {
-        answer = `可以在 Story Bank 中管理 STAR+L 故事、视频复盘或一键导入飞书文档/多维表格。`;
+        answer = `可以在 Questions & Stories 中管理 STAR+L 故事、视频复盘或一键导入飞书文档/多维表格。`;
         links.push({ label: '进入 Story Bank', href: '/stories' });
-        links.push({ label: '飞书一键导入', href: '/import' });
+        links.push({ label: '飞书一键导入', href: '/stories?tab=import' });
       } else {
         answer = `已收到你的问题 "${q}"：你可以直接进入题库按岗位筛选高频真题，或在 Mock Room 开启实时 AI 面试演练（在左下角 Settings 填入 Gemini API Key 后，这里还可直接进行全库深度问答）。`;
         links.push({ label: '刷 7 赛道真题', href: '/questions' });
@@ -663,7 +663,7 @@ Current User Message: "${q}"
 ${getLangInstruction(language)}
 Return strict JSON:
 - answer: Helpful, direct, well-structured answer addressing the user's exact question (no generic boilerplate).
-- links: 0 to 2 relevant BestLucky OS links ONLY if directly helpful, chosen from: [{"label": "...", "href": "/questions"}, {"label": "...", "href": "/customizer"}, {"label": "...", "href": "/knowledge"}, {"label": "...", "href": "/frameworks"}, {"label": "...", "href": "/stories"}, {"label": "...", "href": "/practice"}]; otherwise return [].`,
+- links: 0 to 2 relevant BestLucky OS links ONLY if directly helpful, chosen from: [{"label": "...", "href": "/courses"}, {"label": "...", "href": "/questions"}, {"label": "...", "href": "/stories"}, {"label": "...", "href": "/practice"}, {"label": "...", "href": "/customizer"}, {"label": "...", "href": "/pipeline"}, {"label": "...", "href": "/knowledge"}, {"label": "...", "href": "/pages"}]; otherwise return [].`,
         {
           type: 'object',
           properties: {

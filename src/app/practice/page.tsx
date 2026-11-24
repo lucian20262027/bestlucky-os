@@ -416,10 +416,10 @@ function PracticeLauncherContent() {
                       再练一次
                     </Link>
                     <Link
-                      href="/history"
+                      href={`/questions/${sess.questionId}`}
                       className="rounded-lg border border-[#ECECF2] px-3 py-1.5 text-xs font-medium text-[#5E5E6E] hover:text-[#6E32F5]"
                     >
-                      完整记录 →
+                      查看题解 →
                     </Link>
                   </div>
                 </div>
