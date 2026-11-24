@@ -98,7 +98,9 @@ interface AppContextValue {
   deployHtmlPage: (
     page: Omit<DeployedHtmlPage, 'id' | 'createdAt' | 'updatedAt'>
   ) => DeployedHtmlPage;
+  updateHtmlPage: (id: string, patch: Partial<DeployedHtmlPage>) => void;
   deleteHtmlPage: (id: string) => void;
+  importHtmlPageToCourse: (pageId: string, track: CourseTrackId) => void;
   syncThemeFromHtml: (tokens: HtmlDesignTokens | null) => void;
   updateGoogleCalendarUrl: (url: string) => void;
   exportBackup: () => string;
@@ -817,6 +819,105 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [commit]
   );
 
+  const updateHtmlPage = useCallback(
+    (id: string, patch: Partial<DeployedHtmlPage>) => {
+      const now = new Date().toISOString();
+      commit((prev) => ({
+        ...prev,
+        deployedHtmlPages: (prev.deployedHtmlPages ?? []).map((p) =>
+          p.id === id ? { ...p, ...patch, updatedAt: now } : p
+        ),
+      }));
+    },
+    [commit]
+  );
+
+  const importHtmlPageToCourse = useCallback(
+    (pageId: string, track: CourseTrackId) => {
+      const now = new Date().toISOString();
+      commit((prev) => {
+        const page = (prev.deployedHtmlPages ?? []).find((p) => p.id === pageId);
+        if (!page) return prev;
+        const syllabus = prev.courses[track];
+        if (!syllabus) return prev;
+
+        const hasVideo = Boolean(page.videoUrl || page.localMediaId);
+        const lessonItem = {
+          id: `lesson-html-${page.id}`,
+          title: page.title,
+          kind: (hasVideo ? 'video' : 'lesson') as 'video' | 'lesson',
+          htmlPageId: page.id,
+          videoUrl: page.videoUrl,
+          localMediaId: page.localMediaId,
+          localMediaName: page.localMediaName,
+          summary: page.extractedText.slice(0, 260) || page.title,
+          published: true,
+        };
+
+        const existingModule = syllabus.modules.find((m) => m.id === 'mod-html-imports');
+        let nextModules = syllabus.modules;
+
+        if (existingModule) {
+          nextModules = syllabus.modules.map((m) => {
+            if (m.id !== 'mod-html-imports') return m;
+            return {
+              ...m,
+              subSections: m.subSections.map((sub, idx) => {
+                if (idx !== 0) return sub;
+                const exists = sub.lessons.some((l) => l.htmlPageId === page.id);
+                return {
+                  ...sub,
+                  lessons: exists
+                    ? sub.lessons.map((l) => (l.htmlPageId === page.id ? lessonItem : l))
+                    : [lessonItem, ...sub.lessons],
+                };
+              }),
+            };
+          });
+        } else {
+          const defaultStyle = syllabus.modules[0]?.titleStyle ?? {
+            fontFamily: 'Inter',
+            fontSize: 'md' as const,
+            color: '#111118',
+          };
+          nextModules = [
+            {
+              id: 'mod-html-imports',
+              title: 'Imported HTML & Video Lessons',
+              description: '从 HTML 页面一键导入的课程讲义与配套视频',
+              titleStyle: defaultStyle,
+              subSections: [
+                {
+                  id: 'sub-html-imports',
+                  title: 'Synced Web Lessons',
+                  titleStyle: defaultStyle,
+                  lessons: [lessonItem],
+                },
+              ],
+            },
+            ...syllabus.modules,
+          ];
+        }
+
+        return {
+          ...prev,
+          deployedHtmlPages: (prev.deployedHtmlPages ?? []).map((p) =>
+            p.id === pageId ? { ...p, courseTrack: track, updatedAt: now } : p
+          ),
+          courses: {
+            ...prev.courses,
+            [track]: {
+              ...syllabus,
+              modules: nextModules,
+              updatedAt: now,
+            },
+          },
+        };
+      });
+    },
+    [commit]
+  );
+
   const syncThemeFromHtml = useCallback(
     (tokens: HtmlDesignTokens | null) => {
       commit((prev) => ({
@@ -948,7 +1049,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         upsertResumeProfile,
         deleteResumeProfile,
         deployHtmlPage,
+        updateHtmlPage,
         deleteHtmlPage,
+        importHtmlPageToCourse,
         syncThemeFromHtml,
         updateGoogleCalendarUrl,
         exportBackup,

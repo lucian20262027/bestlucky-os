@@ -741,9 +741,11 @@ function CourseSyllabusContent() {
                           {sub.lessons.map((les) => {
                             const isVideo =
                               les.kind === 'video' || Boolean(les.videoUrl || les.localMediaId);
-                            const targetHref = les.questionId
-                              ? `/questions/${les.questionId}`
-                              : `/questions`;
+                            const targetHref = les.htmlPageId
+                              ? `/pages/${les.htmlPageId}`
+                              : les.questionId
+                                ? `/questions/${les.questionId}`
+                                : `/questions`;
 
                             return (
                               <div

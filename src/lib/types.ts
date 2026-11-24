@@ -263,6 +263,7 @@ export interface CourseLessonItem {
   title: string;
   kind: 'lesson' | 'video' | 'question';
   questionId?: string;
+  htmlPageId?: string;
   videoUrl?: string;
   localMediaId?: string;
   localMediaName?: string;
@@ -496,6 +497,10 @@ export interface DeployedHtmlPage {
   rawHtml: string;
   extractedText: string;
   designTokens: HtmlDesignTokens;
+  videoUrl?: string;
+  localMediaId?: string;
+  localMediaName?: string;
+  courseTrack?: CourseTrackId;
   createdAt: string;
   updatedAt: string;
 }

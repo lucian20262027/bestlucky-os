@@ -213,3 +213,99 @@ export function parseHtmlContent(rawHtml: string, fileName = 'page.html'): HtmlP
     designTokens,
   };
 }
+
+export function toYouTubeEmbedUrl(rawUrl: string): string | null {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+    let videoId = '';
+    if (host === 'youtu.be') {
+      videoId = parsed.pathname.slice(1).split('/')[0] ?? '';
+    } else if (host === 'youtube.com' || host === 'm.youtube.com') {
+      if (parsed.pathname.startsWith('/embed/')) {
+        videoId = parsed.pathname.split('/embed/')[1]?.split('/')[0] ?? '';
+      } else if (parsed.pathname.startsWith('/shorts/')) {
+        videoId = parsed.pathname.split('/shorts/')[1]?.split('/')[0] ?? '';
+      } else {
+        videoId = parsed.searchParams.get('v') ?? '';
+      }
+    }
+    if (!videoId) return null;
+    return `https://www.youtube.com/embed/${videoId}`;
+  } catch {
+    return null;
+  }
+}
+
+export function cleanHtmlForReader(rawHtml: string): {
+  cleanHtml: string;
+  strippedShell: boolean;
+} {
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+    return { cleanHtml: rawHtml, strippedShell: false };
+  }
+
+  const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+  let strippedShell = false;
+
+  // Remove external scripts & trackers so static snapshots stay fast and error-free
+  doc.querySelectorAll('script, noscript').forEach((el) => el.remove());
+
+  const mainContent =
+    doc.querySelector('article') ??
+    doc.querySelector('main') ??
+    doc.querySelector('[role="main"]');
+
+  const shellSelectors = [
+    'aside',
+    'nav',
+    '[role="navigation"]',
+    '[class*="sidebar"]',
+    '[id*="sidebar"]',
+    '[class*="sidenav"]',
+    '[class*="SideNav"]',
+    '[class*="left-nav"]',
+    '[class*="topbar"]',
+  ];
+
+  shellSelectors.forEach((selector) => {
+    doc.querySelectorAll(selector).forEach((el) => {
+      if (mainContent && (el === mainContent || el.contains(mainContent))) {
+        return;
+      }
+      el.remove();
+      strippedShell = true;
+    });
+  });
+
+  // Neutralize fixed sidebar offsets & give the extracted article clean breathing room
+  const styleEl = doc.createElement('style');
+  styleEl.id = 'bl-reader-clean-reset';
+  styleEl.textContent = `
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff !important;
+      overflow-x: hidden !important;
+    }
+    body {
+      padding: 28px 32px !important;
+      max-width: 100% !important;
+    }
+    main, article, [role="main"] {
+      margin-left: auto !important;
+      margin-right: auto !important;
+      padding-left: 0 !important;
+      max-width: 960px !important;
+      width: 100% !important;
+    }
+  `;
+  doc.head.appendChild(styleEl);
+
+  return {
+    cleanHtml: `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`,
+    strippedShell,
+  };
+}
