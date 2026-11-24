@@ -18,7 +18,9 @@ import {
   Video,
 } from 'lucide-react';
 import { useApp } from './AppProvider';
+import { HtmlDeployBanner } from './HtmlDeployBanner';
 import { RoleMultiSelect } from './RoleMultiSelect';
+import { isHtmlFile, parseHtmlContent, type HtmlParseResult } from '@/lib/html-parser';
 import {
   convertParsedItemsForCommit,
   parseCsvToItems,
@@ -57,6 +59,7 @@ export function LarkImportPanel({
   const [previewItems, setPreviewItems] = useState<ParsedImportItem[]>([]);
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [errorMsg, setErrorMsg] = useState<{ error: string; hint?: string } | null>(null);
+  const [uploadedHtmlMeta, setUploadedHtmlMeta] = useState<HtmlParseResult | null>(null);
   const [commitResult, setCommitResult] = useState<{
     questionsCount: number;
     libraryCount: number;
@@ -186,7 +189,14 @@ export function LarkImportPanel({
     if (!file) return;
     setErrorMsg(null);
     setCommitResult(null);
-    const text = await file.text();
+    setUploadedHtmlMeta(null);
+    const rawText = await file.text();
+    let text = rawText;
+    if (isHtmlFile(file.name, file.type)) {
+      const htmlMeta = parseHtmlContent(rawText, file.name);
+      setUploadedHtmlMeta(htmlMeta);
+      text = htmlMeta.text || rawText;
+    }
     if (file.name.toLowerCase().endsWith('.csv')) {
       const parsed = parseCsvToItems(text, defaultRole);
       setRawPages([
@@ -514,18 +524,22 @@ export function LarkImportPanel({
             <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#ECECF2] bg-[#FAFAFC] p-10 text-center transition hover:border-[#6E32F5]">
               <FileSpreadsheet className="h-8 w-8 text-[#6E32F5]" />
               <span className="mt-3 text-sm font-semibold text-[#111118]">
-                Drop or Select Exported Lark Bitable (.csv) or Lark Doc (.md / .txt)
+                Drop or Select Exported Lark Bitable (.csv), Lark Doc (.md / .txt) or HTML (.html)
               </span>
               <span className="mt-1 text-xs text-[#848494]">
-                支持飞书多维表格 CSV 与飞书 Markdown 导出文件
+                支持飞书多维表格 CSV、Markdown 导出文件与 HTML 页面（识别正文并可一键部署）
               </span>
               <input
                 type="file"
-                accept=".csv,.md,.txt,text/csv,text/markdown"
+                accept=".csv,.md,.txt,.html,.htm,text/csv,text/markdown,text/html"
                 onChange={handleFileUpload}
                 className="hidden"
               />
             </label>
+            <HtmlDeployBanner
+              htmlMeta={uploadedHtmlMeta}
+              onDismiss={() => setUploadedHtmlMeta(null)}
+            />
           </div>
         )}
       </div>

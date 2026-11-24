@@ -16,7 +16,9 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
+import { HtmlDeployBanner } from '@/components/HtmlDeployBanner';
 import { extractDocumentText } from '@/lib/doc-parser-client';
+import type { HtmlParseResult } from '@/lib/html-parser';
 import { roleBadgeClasses } from '@/lib/helpers';
 import { ROLE_LIST, ROLES_BY_ID } from '@/lib/roles';
 import { ResumeProfile, RoleTrack, SavedJDItem } from '@/lib/types';
@@ -87,6 +89,8 @@ export function JdResumeStudio({
   const [editingResume, setEditingResume] = useState<ResumeProfile | null>(null);
   const [parsingResumeFile, setParsingResumeFile] = useState(false);
   const [resumeParseNotice, setResumeParseNotice] = useState('');
+  const [jdHtmlMeta, setJdHtmlMeta] = useState<HtmlParseResult | null>(null);
+  const [resumeHtmlMeta, setResumeHtmlMeta] = useState<HtmlParseResult | null>(null);
 
   const callAiEndpoint = async (action: string, payload: Record<string, unknown>) => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -125,8 +129,10 @@ export function JdResumeStudio({
     }
 
     setParsingJdFile(true);
+    setJdHtmlMeta(null);
     try {
       const result = await extractDocumentText(file);
+      if (result.htmlMeta) setJdHtmlMeta(result.htmlMeta);
       if (result.text) {
         setJdTextInput((prev) =>
           prev.trim() ? `${prev.trim()}\n\n${result.text}` : result.text
@@ -269,9 +275,11 @@ export function JdResumeStudio({
     e.target.value = '';
     if (!file || !editingResume) return;
     setResumeParseNotice('');
+    setResumeHtmlMeta(null);
     setParsingResumeFile(true);
     try {
       const result = await extractDocumentText(file);
+      if (result.htmlMeta) setResumeHtmlMeta(result.htmlMeta);
       setEditingResume((prev) =>
         prev
           ? {
@@ -669,16 +677,20 @@ export function JdResumeStudio({
                     <ImagePlus className="h-4 w-4" />
                     {jdScreenshotName
                       ? `已选择文件: ${jdScreenshotName}`
-                      : '上传公司 JD 截图或文档 (PNG / JPG / PDF / DOC / DOCX)'}
+                      : '上传公司 JD 截图或文档 (PNG / JPG / PDF / DOC / DOCX / HTML)'}
                   </>
                 )}
                 <input
                   type="file"
-                  accept="image/*,.pdf,.doc,.docx,.txt,.md"
+                  accept="image/*,.pdf,.doc,.docx,.txt,.md,.html,.htm"
                   onChange={handleJdFileUpload}
                   className="hidden"
                 />
               </label>
+              <HtmlDeployBanner
+                htmlMeta={jdHtmlMeta}
+                onDismiss={() => setJdHtmlMeta(null)}
+              />
               {jdParseNotice && (
                 <p className="text-[11px] text-amber-600">{jdParseNotice}</p>
               )}
@@ -907,16 +919,20 @@ export function JdResumeStudio({
                     <Upload className="h-4 w-4" />
                     {editingResume.fileName
                       ? `已关联文件: ${editingResume.fileName}`
-                      : '上传简历文件 (PDF / DOC / DOCX / TXT / MD 自动解析正文)'}
+                      : '上传简历文件 (PDF / DOC / DOCX / TXT / MD / HTML 自动解析正文)'}
                   </>
                 )}
                 <input
                   type="file"
-                  accept=".pdf,.doc,.docx,.txt,.md"
+                  accept=".pdf,.doc,.docx,.txt,.md,.html,.htm"
                   onChange={handleResumeFileUpload}
                   className="hidden"
                 />
               </label>
+              <HtmlDeployBanner
+                htmlMeta={resumeHtmlMeta}
+                onDismiss={() => setResumeHtmlMeta(null)}
+              />
               {resumeParseNotice && (
                 <p className="text-[11px] text-amber-600">{resumeParseNotice}</p>
               )}

@@ -19,7 +19,9 @@ import {
   Volume2,
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
+import { HtmlDeployBanner } from '@/components/HtmlDeployBanner';
 import { extractDocumentText } from '@/lib/doc-parser-client';
+import type { HtmlParseResult } from '@/lib/html-parser';
 import { KnowledgeArticle, KnowledgeSnippet } from '@/lib/types';
 
 interface KnowledgeOceanTabProps {
@@ -43,6 +45,7 @@ export default function KnowledgeOceanTab({
   const [fileNameInput, setFileNameInput] = useState('');
   const [rawTextInput, setRawTextInput] = useState('');
   const [parsingFile, setParsingFile] = useState(false);
+  const [uploadedHtmlMeta, setUploadedHtmlMeta] = useState<HtmlParseResult | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [notice, setNotice] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -67,6 +70,7 @@ export default function KnowledgeOceanTab({
     e.target.value = '';
     if (!file) return;
     setNotice('');
+    setUploadedHtmlMeta(null);
     setParsingFile(true);
     setFileNameInput(file.name);
     if (!titleInput.trim()) {
@@ -74,6 +78,9 @@ export default function KnowledgeOceanTab({
     }
     try {
       const result = await extractDocumentText(file);
+      if (result.htmlMeta) {
+        setUploadedHtmlMeta(result.htmlMeta);
+      }
       if (result.text) {
         setRawTextInput(result.text);
       } else if (result.error) {
@@ -309,16 +316,21 @@ export default function KnowledgeOceanTab({
               <Upload className="h-4 w-4" />
               {fileNameInput
                 ? `已导入文档: ${fileNameInput}`
-                : '点击上传文章 PDF / Word / TXT (自动提取正文)'}
+                : '点击上传文章 PDF / Word / TXT / HTML (自动提取正文与一键部署)'}
             </>
           )}
           <input
             type="file"
-            accept=".pdf,.doc,.docx,.txt,.md"
+            accept=".pdf,.doc,.docx,.txt,.md,.html,.htm"
             onChange={handleFileUpload}
             className="hidden"
           />
         </label>
+
+        <HtmlDeployBanner
+          htmlMeta={uploadedHtmlMeta}
+          onDismiss={() => setUploadedHtmlMeta(null)}
+        />
 
         {notice && <p className="text-xs text-amber-600">{notice}</p>}
 

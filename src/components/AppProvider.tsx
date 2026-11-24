@@ -15,6 +15,8 @@ import {
   CourseSyllabus,
   CourseTrackId,
   CustomLoopPlan,
+  DeployedHtmlPage,
+  HtmlDesignTokens,
   InterviewQuestion,
   JobApplication,
   KnowledgeArticle,
@@ -93,6 +95,11 @@ interface AppContextValue {
   deleteSavedJD: (id: string) => void;
   upsertResumeProfile: (resume: ResumeProfile) => void;
   deleteResumeProfile: (id: string) => void;
+  deployHtmlPage: (
+    page: Omit<DeployedHtmlPage, 'id' | 'createdAt' | 'updatedAt'>
+  ) => DeployedHtmlPage;
+  deleteHtmlPage: (id: string) => void;
+  syncThemeFromHtml: (tokens: HtmlDesignTokens | null) => void;
   updateGoogleCalendarUrl: (url: string) => void;
   exportBackup: () => string;
   importBackup: (jsonText: string) => boolean;
@@ -782,6 +789,89 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [commit]
   );
 
+  const deployHtmlPage = useCallback(
+    (page: Omit<DeployedHtmlPage, 'id' | 'createdAt' | 'updatedAt'>): DeployedHtmlPage => {
+      const now = new Date().toISOString();
+      const created: DeployedHtmlPage = {
+        ...page,
+        id: `html-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        createdAt: now,
+        updatedAt: now,
+      };
+      commit((prev) => ({
+        ...prev,
+        deployedHtmlPages: [created, ...(prev.deployedHtmlPages ?? [])],
+      }));
+      return created;
+    },
+    [commit]
+  );
+
+  const deleteHtmlPage = useCallback(
+    (id: string) => {
+      commit((prev) => ({
+        ...prev,
+        deployedHtmlPages: (prev.deployedHtmlPages ?? []).filter((p) => p.id !== id),
+      }));
+    },
+    [commit]
+  );
+
+  const syncThemeFromHtml = useCallback(
+    (tokens: HtmlDesignTokens | null) => {
+      commit((prev) => ({
+        ...prev,
+        syncedTheme: tokens,
+      }));
+    },
+    [commit]
+  );
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    const theme = state.syncedTheme;
+    const linkId = 'bl-synced-google-fonts';
+    const existingLink = document.getElementById(linkId);
+
+    if (!theme) {
+      root.style.removeProperty('--font-sans-stack');
+      root.style.removeProperty('--accent');
+      root.style.removeProperty('--canvas');
+      root.style.removeProperty('--ink-primary');
+      if (existingLink) existingLink.remove();
+      return;
+    }
+
+    if (theme.googleFontsHref) {
+      if (existingLink instanceof HTMLLinkElement) {
+        if (existingLink.href !== theme.googleFontsHref) {
+          existingLink.href = theme.googleFontsHref;
+        }
+      } else {
+        const link = document.createElement('link');
+        link.id = linkId;
+        link.rel = 'stylesheet';
+        link.href = theme.googleFontsHref;
+        document.head.appendChild(link);
+      }
+    } else if (existingLink) {
+      existingLink.remove();
+    }
+
+    if (theme.fontFamily) {
+      root.style.setProperty('--font-sans-stack', theme.fontFamily);
+    } else {
+      root.style.removeProperty('--font-sans-stack');
+    }
+
+    if (theme.accentColor) {
+      root.style.setProperty('--accent', theme.accentColor);
+    } else {
+      root.style.removeProperty('--accent');
+    }
+  }, [state.syncedTheme]);
+
   const updateGoogleCalendarUrl = useCallback(
     (url: string) => {
       commit((prev) => ({
@@ -857,6 +947,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deleteSavedJD,
         upsertResumeProfile,
         deleteResumeProfile,
+        deployHtmlPage,
+        deleteHtmlPage,
+        syncThemeFromHtml,
         updateGoogleCalendarUrl,
         exportBackup,
         importBackup,

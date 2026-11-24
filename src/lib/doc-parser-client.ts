@@ -1,9 +1,23 @@
+import { HtmlParseResult, isHtmlFile, parseHtmlContent } from '@/lib/html-parser';
+
 export async function extractDocumentText(file: File): Promise<{
   fileName: string;
   text: string;
   error?: string;
+  htmlMeta?: HtmlParseResult;
 }> {
   const lower = file.name.toLowerCase();
+
+  if (isHtmlFile(file.name, file.type)) {
+    const rawHtml = await file.text();
+    const htmlMeta = parseHtmlContent(rawHtml, file.name);
+    return {
+      fileName: file.name,
+      text: htmlMeta.text,
+      htmlMeta,
+    };
+  }
+
   if (lower.endsWith('.txt') || lower.endsWith('.md') || file.type.startsWith('text/')) {
     const text = await file.text();
     return { fileName: file.name, text: text.trim() };

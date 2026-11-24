@@ -249,6 +249,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <span>Knowledge Hub</span>
               </span>
             </Link>
+            <Link
+              href="/pages"
+              onClick={() => setMobileOpen(false)}
+              className={navItemClass(pathname.startsWith('/pages'))}
+            >
+              <span className="flex items-center gap-2.5">
+                <Layers className="h-4 w-4 shrink-0" />
+                <span>HTML Pages</span>
+              </span>
+              {mounted && (state.deployedHtmlPages?.length ?? 0) > 0 && (
+                <span className="rounded-full bg-[#F3ECFF] px-1.5 py-0.5 text-[10px] font-semibold text-[#6E32F5]">
+                  {state.deployedHtmlPages?.length}
+                </span>
+              )}
+            </Link>
           </div>
         </nav>
       </div>

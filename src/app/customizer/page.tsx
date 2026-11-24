@@ -17,9 +17,11 @@ import {
   Wand2,
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
+import { HtmlDeployBanner } from '@/components/HtmlDeployBanner';
 import { JdResumeStudio } from '@/components/JdResumeStudio';
 import { requestCustomLoop } from '@/lib/ai-client';
 import { extractDocumentText } from '@/lib/doc-parser-client';
+import type { HtmlParseResult } from '@/lib/html-parser';
 import { roleBadgeClasses } from '@/lib/helpers';
 import { ROLE_LIST, ROLES_BY_ID, ROUND_LABELS } from '@/lib/roles';
 import { SAMPLE_JDS } from '@/lib/seed-stories';
@@ -48,6 +50,7 @@ export default function CustomizerPage() {
   const [parsingJdFile, setParsingJdFile] = useState(false);
   const [resumeFileName, setResumeFileName] = useState('');
   const [jdFileName, setJdFileName] = useState('');
+  const [uploadedHtmlMeta, setUploadedHtmlMeta] = useState<HtmlParseResult | null>(null);
 
   const plan = state.lastCustomLoop;
 
@@ -60,6 +63,7 @@ export default function CustomizerPage() {
     try {
       const res = await extractDocumentText(file);
       setResumeFileName(file.name);
+      if (res.htmlMeta) setUploadedHtmlMeta(res.htmlMeta);
       if (res.text) {
         updateResumeSummary(res.text);
       } else if (res.error) {
@@ -79,6 +83,7 @@ export default function CustomizerPage() {
     try {
       const res = await extractDocumentText(file);
       setJdFileName(file.name);
+      if (res.htmlMeta) setUploadedHtmlMeta(res.htmlMeta);
       if (res.text) {
         setJdText(res.text);
       } else if (res.error) {
@@ -261,10 +266,10 @@ export default function CustomizerPage() {
                   ) : (
                     <Upload className="h-3 w-3" />
                   )}
-                  {parsingResumeFile ? '解析中...' : '上传 PDF / DOC'}
+                  {parsingResumeFile ? '解析中...' : '上传 PDF / DOC / HTML'}
                   <input
                     type="file"
-                    accept=".pdf,.doc,.docx,.txt,.md"
+                    accept=".pdf,.doc,.docx,.txt,.md,.html,.htm"
                     onChange={handleResumeDocUpload}
                     className="hidden"
                   />
@@ -346,10 +351,10 @@ export default function CustomizerPage() {
                   ) : (
                     <Upload className="h-3 w-3" />
                   )}
-                  {parsingJdFile ? '解析中...' : '上传 PDF / DOC'}
+                  {parsingJdFile ? '解析中...' : '上传 PDF / DOC / HTML'}
                   <input
                     type="file"
-                    accept=".pdf,.doc,.docx,.txt,.md"
+                    accept=".pdf,.doc,.docx,.txt,.md,.html,.htm"
                     onChange={handleJdDocUpload}
                     className="hidden"
                   />
@@ -372,6 +377,10 @@ export default function CustomizerPage() {
                 已导入 JD: {jdFileName}
               </p>
             )}
+            <HtmlDeployBanner
+              htmlMeta={uploadedHtmlMeta}
+              onDismiss={() => setUploadedHtmlMeta(null)}
+            />
 
             <textarea
               required

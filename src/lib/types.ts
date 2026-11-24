@@ -479,6 +479,27 @@ export interface KnowledgeArticle {
   createdAt: string;
 }
 
+export interface HtmlDesignTokens {
+  fontFamily?: string;
+  headingFont?: string;
+  googleFontsHref?: string;
+  accentColor?: string;
+  backgroundColor?: string;
+  textColor?: string;
+  sourceTitle?: string;
+}
+
+export interface DeployedHtmlPage {
+  id: string;
+  title: string;
+  fileName: string;
+  rawHtml: string;
+  extractedText: string;
+  designTokens: HtmlDesignTokens;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppState {
   profile: UserProfile;
   aiSettings: AISettings;
@@ -501,6 +522,8 @@ export interface AppState {
   applications: JobApplication[];
   savedJDs: SavedJDItem[];
   resumeProfiles: ResumeProfile[];
+  deployedHtmlPages?: DeployedHtmlPage[];
+  syncedTheme?: HtmlDesignTokens | null;
   googleCalendarIcsUrl?: string;
   lastCustomLoop: CustomLoopPlan | null;
 }

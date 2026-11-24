@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { extractReadableTextFromHtml, isHtmlFile } from '@/lib/html-parser';
 
 function extractLegacyDocText(buffer: Buffer): string {
   // Best-effort readable ASCII/UTF-8 text extraction for legacy binary .doc files
@@ -24,7 +25,10 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(arrayBuf);
     let text = '';
 
-    if (name.endsWith('.txt') || name.endsWith('.md') || file.type.startsWith('text/')) {
+    if (isHtmlFile(name, file.type)) {
+      const rawHtml = buffer.toString('utf-8');
+      text = extractReadableTextFromHtml(rawHtml).text;
+    } else if (name.endsWith('.txt') || name.endsWith('.md') || file.type.startsWith('text/')) {
       text = buffer.toString('utf-8').trim();
     } else if (name.endsWith('.docx')) {
       const mammoth = await import('mammoth');
