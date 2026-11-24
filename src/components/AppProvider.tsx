@@ -190,6 +190,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       } catch {
         json = {};
       }
+      if (json.configured === false) {
+        cloudConfiguredRef.current = false;
+        setSyncStatus('local-only');
+        setLastSyncError(null);
+        return;
+      }
       if (res.ok && json.saved) {
         setSyncStatus('synced');
         setLastSyncedAt(json.updatedAt ?? new Date().toISOString());
