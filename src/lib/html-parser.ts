@@ -124,7 +124,11 @@ export function extractReadableTextFromHtml(rawHtml: string): {
 
     // Remove stray Save / Skip buttons
     doc.querySelectorAll('a, button').forEach((el) => {
-      const txt = (el.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const txt = (el.textContent ?? '')
+        .replace(/[★☆⭐]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
       if (txt === 'save' || txt === 'saved' || txt.includes('skip to main content')) {
         el.remove();
       }
@@ -309,7 +313,11 @@ export function cleanHtmlForReader(
 
   // Remove stray Save / Bookmark / Skip-to-content / Lesson-contents right-rail clones
   doc.querySelectorAll('a, button').forEach((el) => {
-    const txt = (el.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const txt = (el.textContent ?? '')
+      .replace(/[★☆⭐]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
     if (
       txt === 'save' ||
       txt === 'saved' ||
