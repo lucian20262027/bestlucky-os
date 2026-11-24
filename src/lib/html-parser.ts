@@ -382,13 +382,30 @@ export function cleanHtmlForReader(
       resolvedSrc = `${sourceOrigin}${resolvedSrc}`;
     }
 
+    // Unwrap Next.js /_next/image?url=... proxies when inner CDN URL is absolute
+    let unwrappedCdn = false;
+    if (resolvedSrc && resolvedSrc.includes('/_next/image')) {
+      try {
+        const parsedImg = new URL(resolvedSrc, sourceOrigin || 'https://aced.io');
+        const innerUrl = parsedImg.searchParams.get('url');
+        if (innerUrl && (innerUrl.startsWith('http://') || innerUrl.startsWith('https://'))) {
+          resolvedSrc = innerUrl;
+          unwrappedCdn = true;
+        }
+      } catch {
+        // keep resolvedSrc as-is
+      }
+    }
+
     if (resolvedSrc) {
       img.setAttribute('src', resolvedSrc);
     }
 
-    // Rewrite relative srcset entries too
+    // Rewrite relative srcset entries (or drop srcset when unwrapped to direct CDN URL)
     const srcset = img.getAttribute('srcset');
-    if (srcset && sourceOrigin) {
+    if (unwrappedCdn) {
+      img.removeAttribute('srcset');
+    } else if (srcset && sourceOrigin) {
       const fixedSrcset = srcset
         .split(',')
         .map((part) => {
