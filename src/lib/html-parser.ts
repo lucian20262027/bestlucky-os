@@ -274,6 +274,31 @@ export function toYouTubeEmbedUrl(rawUrl: string): string | null {
   }
 }
 
+function detectSourceOrigin(doc: Document, rawHtml: string): string | null {
+  const canonical =
+    doc.querySelector('link[rel="canonical"]')?.getAttribute('href') ??
+    doc.querySelector('meta[property="og:url"]')?.getAttribute('content') ??
+    '';
+  if (canonical) {
+    try {
+      return new URL(canonical).origin;
+    } catch {
+      // ignore invalid URL
+    }
+  }
+  const commentMatch = rawHtml.match(/saved from url=\(\d+\)(https?:\/\/[^\s>]+)/i);
+  if (commentMatch?.[1]) {
+    try {
+      return new URL(commentMatch[1]).origin;
+    } catch {
+      // ignore
+    }
+  }
+  if (/aced\.io/i.test(rawHtml)) return 'https://aced.io';
+  if (/tryexponent\.com/i.test(rawHtml)) return 'https://www.tryexponent.com';
+  return null;
+}
+
 export function cleanHtmlForReader(
   rawHtml: string,
   options?: { editable?: boolean }
@@ -287,6 +312,7 @@ export function cleanHtmlForReader(
   }
 
   const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+  const sourceOrigin = detectSourceOrigin(doc, rawHtml);
   let strippedShell = false;
 
   // Remove external scripts & trackers so static snapshots stay fast and error-free
@@ -339,6 +365,46 @@ export function cleanHtmlForReader(
       el.remove();
       strippedShell = true;
     }
+  });
+
+  // Fix relative / lazy-loaded images so diagrams & screenshots render cleanly inside srcDoc
+  doc.querySelectorAll('img').forEach((img) => {
+    const dataSrc = img.getAttribute('data-src') || img.getAttribute('data-original');
+    const currentSrc = img.getAttribute('src') ?? '';
+    let resolvedSrc =
+      !currentSrc || currentSrc.startsWith('data:image/gif;base64,R0lGOD')
+        ? dataSrc || currentSrc
+        : currentSrc;
+
+    if (resolvedSrc && resolvedSrc.startsWith('//')) {
+      resolvedSrc = `https:${resolvedSrc}`;
+    } else if (resolvedSrc && resolvedSrc.startsWith('/') && sourceOrigin) {
+      resolvedSrc = `${sourceOrigin}${resolvedSrc}`;
+    }
+
+    if (resolvedSrc) {
+      img.setAttribute('src', resolvedSrc);
+    }
+
+    // Rewrite relative srcset entries too
+    const srcset = img.getAttribute('srcset');
+    if (srcset && sourceOrigin) {
+      const fixedSrcset = srcset
+        .split(',')
+        .map((part) => {
+          const trimmed = part.trim();
+          if (trimmed.startsWith('/')) return `${sourceOrigin}${trimmed}`;
+          if (trimmed.startsWith('//')) return `https:${trimmed}`;
+          return trimmed;
+        })
+        .join(', ');
+      img.setAttribute('srcset', fixedSrcset);
+    }
+
+    img.removeAttribute('loading');
+    img.setAttribute('referrerpolicy', 'no-referrer');
+    if (!img.style.maxWidth) img.style.maxWidth = '100%';
+    if (!img.style.height) img.style.height = 'auto';
   });
 
   // Assign stable IDs to h2/h3 headings for right-rail Lesson contents TOC

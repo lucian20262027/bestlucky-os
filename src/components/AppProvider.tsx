@@ -125,7 +125,7 @@ function compactStateForCloudSync(nextState: AppState): AppState {
     return nextState;
   }
 
-  // First pass: strip external scripts/shells from large HTML pages
+  // First pass: strip external scripts/shells from large HTML pages while preserving embedded images
   let compacted: AppState = {
     ...nextState,
     deployedHtmlPages: nextState.deployedHtmlPages.map((p) => {
@@ -133,7 +133,7 @@ function compactStateForCloudSync(nextState: AppState): AppState {
       const cleaned = cleanHtmlForReader(p.rawHtml).cleanHtml;
       return {
         ...p,
-        rawHtml: cleaned.replace(/data:image\/[^"')\s]{2048,}/gi, ''),
+        rawHtml: cleaned,
       };
     }),
   };
@@ -142,7 +142,20 @@ function compactStateForCloudSync(nextState: AppState): AppState {
     return compacted;
   }
 
-  // Second pass: cap oversized rawHtml snapshots in cloud backup while keeping extractedText intact
+  // Second pass: trim only huge >120KB inline data URIs if payload still exceeds Vercel 4.5MB limit
+  compacted = {
+    ...compacted,
+    deployedHtmlPages: compacted.deployedHtmlPages?.map((p) => ({
+      ...p,
+      rawHtml: p.rawHtml.replace(/data:image\/[^"')\s]{120000,}/gi, ''),
+    })),
+  };
+
+  if (JSON.stringify({ workspaceId: 'lucian-main', state: compacted }).length <= 3_800_000) {
+    return compacted;
+  }
+
+  // Final pass: cap oversized rawHtml snapshots in cloud backup while keeping extractedText intact
   compacted = {
     ...compacted,
     deployedHtmlPages: compacted.deployedHtmlPages?.map((p) => ({
