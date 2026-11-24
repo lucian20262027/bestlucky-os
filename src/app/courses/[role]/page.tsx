@@ -22,6 +22,7 @@ import {
   Play,
   Plus,
   Rocket,
+  Save,
   Sparkles,
   Trash2,
   Upload,
@@ -31,7 +32,11 @@ import { useApp } from '@/components/AppProvider';
 import { TypographyPicker } from '@/components/TypographyPicker';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import { roleBadgeClasses } from '@/lib/helpers';
-import { cleanHtmlForReader, extractReadableTextFromHtml } from '@/lib/html-parser';
+import {
+  cleanHtmlForReader,
+  extractReadableTextFromHtml,
+  toYouTubeEmbedUrl,
+} from '@/lib/html-parser';
 import { getHtmlSnapshot, saveHtmlSnapshot } from '@/lib/html-snapshot-db';
 import { saveLocalMedia } from '@/lib/media-db';
 import { ROLES_BY_ID } from '@/lib/roles';
@@ -70,12 +75,30 @@ function CourseSyllabusContent() {
     toggleCourseLessonComplete,
     addCustomQuestion,
     updateQuestionNotes,
+    deployHtmlPage,
+    updateHtmlPage,
   } = useApp();
 
   const [editMode, setEditMode] = useState(false);
   const [collapsedSubs, setCollapsedSubs] = useState<Record<string, boolean>>({});
   const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
   const [expandedSnapshotHtml, setExpandedSnapshotHtml] = useState<string | null>(null);
+  const [editingInlineLessonId, setEditingInlineLessonId] = useState<string | null>(null);
+  const [inlineNotice, setInlineNotice] = useState('');
+  const [inlineVideoTitle, setInlineVideoTitle] = useState('');
+  const [inlineVideoNote, setInlineVideoNote] = useState('');
+  const [inlineVideoUrl, setInlineVideoUrl] = useState('');
+  const [inlineUploading, setInlineUploading] = useState(false);
+  const inlineIframeRef = React.useRef<HTMLIFrameElement | null>(null);
+
+  // Module-level Quick Standalone Video Lesson Creator
+  const [quickVideoModId, setQuickVideoModId] = useState<string | null>(null);
+  const [qvTitle, setQvTitle] = useState('');
+  const [qvNote, setQvNote] = useState('');
+  const [qvVideoUrl, setQvVideoUrl] = useState('');
+  const [qvLocalMediaId, setQvLocalMediaId] = useState<string | undefined>(undefined);
+  const [qvLocalMediaName, setQvLocalMediaName] = useState<string | undefined>(undefined);
+  const [qvUploading, setQvUploading] = useState(false);
   const [draggingModuleId, setDraggingModuleId] = useState<string | null>(null);
   const [dragOverModuleId, setDragOverModuleId] = useState<string | null>(null);
   const [draggingLesson, setDraggingLesson] = useState<{
@@ -202,6 +225,200 @@ function CourseSyllabusContent() {
         };
       }),
     });
+  };
+
+  const handleQuickVideoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setQvUploading(true);
+    try {
+      const saved = await saveLocalMedia(file);
+      setQvLocalMediaId(saved.id);
+      setQvLocalMediaName(saved.name);
+      if (saved.cloudUrl) setQvVideoUrl(saved.cloudUrl);
+      if (!qvTitle.trim()) setQvTitle(file.name.replace(/\.[^.]+$/, ''));
+    } finally {
+      setQvUploading(false);
+    }
+  };
+
+  const handleSaveQuickVideoLesson = (e: React.FormEvent, modId: string) => {
+    e.preventDefault();
+    if (!qvTitle.trim()) return;
+    const mod = course.modules.find((m) => m.id === modId);
+    if (!mod || mod.subSections.length === 0) return;
+
+    const noteHtml = qvNote.trim()
+      ? `<p>${qvNote
+          .trim()
+          .split('\n')
+          .map((line) => line.replace(/</g, '&lt;').replace(/>/g, '&gt;'))
+          .join('</p><p>')}</p>`
+      : '<p>配套视频课程笔记与重点拆解，可点击「编辑正文」随时补充。</p>';
+    const rawHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${qvTitle.trim()}</title></head><body><article><h1>${qvTitle.trim()}</h1>${noteHtml}</article></body></html>`;
+
+    const deployed = deployHtmlPage({
+      title: qvTitle.trim(),
+      moduleTitle: mod.title,
+      fileName: `${qvTitle.trim()}.html`,
+      rawHtml,
+      extractedText: qvNote.trim() || qvTitle.trim(),
+      designTokens: {},
+      videoUrl: qvVideoUrl.trim() || undefined,
+      localMediaId: qvLocalMediaId,
+      localMediaName: qvLocalMediaName,
+      courseTrack: role,
+    });
+
+    const newLesson: CourseLessonItem = {
+      id: `lesson-vid-${Date.now()}`,
+      title: qvTitle.trim(),
+      kind: 'video',
+      htmlPageId: deployed.id,
+      videoUrl: qvVideoUrl.trim() || undefined,
+      localMediaId: qvLocalMediaId,
+      localMediaName: qvLocalMediaName,
+      summary: qvNote.trim() || '视频课程讲解',
+      published: true,
+    };
+
+    const targetSubId = mod.subSections[0].id;
+    saveCourse({
+      ...course,
+      modules: course.modules.map((m) =>
+        m.id !== modId
+          ? m
+          : {
+              ...m,
+              subSections: m.subSections.map((s) =>
+                s.id !== targetSubId ? s : { ...s, lessons: [...s.lessons, newLesson] }
+              ),
+            }
+      ),
+    });
+
+    setQuickVideoModId(null);
+    setQvTitle('');
+    setQvNote('');
+    setQvVideoUrl('');
+    setQvLocalMediaId(undefined);
+    setQvLocalMediaName(undefined);
+    setExpandedLessonId(newLesson.id);
+  };
+
+  const handleInlineUploadVideo = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    pageId: string
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setInlineUploading(true);
+    setInlineNotice('');
+    try {
+      const saved = await saveLocalMedia(file);
+      const src = saved.cloudUrl || '';
+      if (src) {
+        setInlineVideoUrl(src);
+      } else {
+        updateHtmlPage(pageId, {
+          localMediaId: saved.id,
+          localMediaName: saved.name,
+        });
+        setInlineNotice(`已挂载本地视频「${saved.name}」到本课顶部播放器！`);
+      }
+    } finally {
+      setInlineUploading(false);
+    }
+  };
+
+  const handleInsertVideoIntoArticle = (pageId: string) => {
+    const doc = inlineIframeRef.current?.contentDocument;
+    if (!doc) return;
+    const rawUrl = inlineVideoUrl.trim();
+    if (!rawUrl) {
+      setInlineNotice('请先粘贴 YouTube 链接或上传 MP4 视频');
+      return;
+    }
+
+    const ytEmbed = toYouTubeEmbedUrl(rawUrl);
+    const root =
+      doc.querySelector('[data-bl-editable="true"]') ??
+      doc.querySelector('article') ??
+      doc.querySelector('main') ??
+      doc.body;
+
+    const wrapper = doc.createElement('div');
+    wrapper.className = 'bl-embedded-video';
+    wrapper.setAttribute(
+      'style',
+      'margin: 24px 0; padding: 16px; border: 1px solid #ECECF2; border-radius: 16px; background: #FAFAFC;'
+    );
+
+    if (inlineVideoTitle.trim()) {
+      const h = doc.createElement('h3');
+      h.textContent = inlineVideoTitle.trim();
+      h.setAttribute('style', 'margin: 0 0 6px 0; font-size: 16px; font-weight: 700; color: #111118;');
+      wrapper.appendChild(h);
+    }
+    if (inlineVideoNote.trim()) {
+      const p = doc.createElement('p');
+      p.textContent = inlineVideoNote.trim();
+      p.setAttribute('style', 'margin: 0 0 12px 0; font-size: 13px; color: #525260;');
+      wrapper.appendChild(p);
+    }
+
+    if (ytEmbed) {
+      const frame = doc.createElement('iframe');
+      frame.src = ytEmbed;
+      frame.setAttribute(
+        'style',
+        'width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 12px;'
+      );
+      frame.setAttribute('allowfullscreen', 'true');
+      wrapper.appendChild(frame);
+    } else {
+      const vid = doc.createElement('video');
+      vid.src = rawUrl;
+      vid.controls = true;
+      vid.setAttribute(
+        'style',
+        'width: 100%; max-height: 440px; border-radius: 12px; background: #000;'
+      );
+      wrapper.appendChild(vid);
+    }
+
+    root.appendChild(wrapper);
+    setInlineVideoTitle('');
+    setInlineVideoNote('');
+    setInlineVideoUrl('');
+    setInlineNotice('已将视频块插入到文章内！请点击「保存修改」持久化。');
+    // Keep pageId referenced cleanly
+    void pageId;
+  };
+
+  const handleSaveInlineArticle = (pageId: string, fallbackRawHtml: string) => {
+    const doc = inlineIframeRef.current?.contentDocument;
+    if (!doc) {
+      setEditingInlineLessonId(null);
+      return;
+    }
+    doc.querySelectorAll('[data-bl-editable]').forEach((el) => {
+      el.removeAttribute('contenteditable');
+      el.removeAttribute('data-bl-editable');
+    });
+    doc.getElementById('bl-reader-clean-reset')?.remove();
+    const updatedHtml = `<!DOCTYPE html>\n${doc.documentElement.outerHTML}` || fallbackRawHtml;
+    const extracted = extractReadableTextFromHtml(updatedHtml);
+    updateHtmlPage(pageId, {
+      rawHtml: updatedHtml,
+      extractedText: extracted.text,
+    });
+    setExpandedSnapshotHtml(updatedHtml);
+    setEditingInlineLessonId(null);
+    setInlineNotice('已保存正文与视频修改！');
+    window.setTimeout(() => setInlineNotice(''), 2500);
   };
 
   const jumpToLesson = (item: {
@@ -758,22 +975,46 @@ function CourseSyllabusContent() {
                     </div>
                   ) : (
                     <>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="cursor-grab text-[#B0B0C0] hover:text-[#6E32F5] active:cursor-grabbing"
-                          title="拖拽调整大章节前后顺序"
-                        >
-                          <GripVertical className="h-4 w-4" />
-                        </span>
-                        <h2
-                          style={getTypographyStyle(mod.titleStyle)}
-                          className={`text-[#111118] ${getTypographyClasses(
-                            mod.titleStyle,
-                            'heading'
-                          )}`}
-                        >
-                          {mod.title}
-                        </h2>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="cursor-grab text-[#B0B0C0] hover:text-[#6E32F5] active:cursor-grabbing"
+                            title="拖拽调整大章节前后顺序"
+                          >
+                            <GripVertical className="h-4 w-4" />
+                          </span>
+                          <h2
+                            style={getTypographyStyle(mod.titleStyle)}
+                            className={`text-[#111118] ${getTypographyClasses(
+                              mod.titleStyle,
+                              'heading'
+                            )}`}
+                          >
+                            {mod.title}
+                          </h2>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setQuickVideoModId((prev) => (prev === mod.id ? null : mod.id))
+                            }
+                            data-testid={`course-add-video-${mod.id}`}
+                            className="inline-flex items-center gap-1 rounded-xl border border-[#D4C5FD] bg-[#F9F6FF] px-2.5 py-1 text-[11px] font-semibold text-[#6E32F5] transition hover:bg-[#F3ECFF]"
+                          >
+                            <Video className="h-3.5 w-3.5" />
+                            上传视频课
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditMode(true)}
+                            className="inline-flex items-center gap-1 rounded-xl border border-[#ECECF2] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#525260] transition hover:border-[#6E32F5] hover:text-[#111118]"
+                          >
+                            <Edit3 className="h-3 w-3" />
+                            编辑
+                          </button>
+                        </div>
                       </div>
                       <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-[#848494]">
                         <span className="inline-flex items-center gap-1">
@@ -793,6 +1034,71 @@ function CourseSyllabusContent() {
                         <p className="mt-2.5 text-sm leading-relaxed text-[#525260]">
                           {mod.description}
                         </p>
+                      )}
+
+                      {quickVideoModId === mod.id && (
+                        <form
+                          onSubmit={(e) => handleSaveQuickVideoLesson(e, mod.id)}
+                          className="mt-4 space-y-2.5 rounded-2xl border border-[#D4C5FD] bg-[#FAF8FF] p-4"
+                          data-testid="course-quick-video-form"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-[#6E32F5]">
+                              为「{mod.title}」新增一节独立视频课（含标题与讲解笔记）
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setQuickVideoModId(null)}
+                              className="text-xs text-[#848494] hover:text-[#111118]"
+                            >
+                              取消
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            required
+                            value={qvTitle}
+                            onChange={(e) => setQvTitle(e.target.value)}
+                            placeholder="视频课程标题（如 Mock Walkthrough: Pricing Strategy）"
+                            className="w-full rounded-xl border border-[#ECECF2] bg-white px-3 py-2 text-xs font-semibold text-[#111118] focus:border-[#6E32F5] focus:outline-none"
+                          />
+                          <textarea
+                            rows={2}
+                            value={qvNote}
+                            onChange={(e) => setQvNote(e.target.value)}
+                            placeholder="添加讲解说明 / 重点提示（可选，展开后显示在视频下方）"
+                            className="w-full rounded-xl border border-[#ECECF2] bg-white p-2.5 text-xs text-[#111118] focus:border-[#6E32F5] focus:outline-none"
+                          />
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input
+                              type="url"
+                              value={qvVideoUrl}
+                              onChange={(e) => setQvVideoUrl(e.target.value)}
+                              placeholder="粘贴 YouTube 链接，或点击右侧直接上传 MP4 到 R2..."
+                              className="min-w-[220px] flex-1 rounded-xl border border-[#ECECF2] bg-white px-3 py-2 text-xs text-[#111118] focus:border-[#6E32F5] focus:outline-none"
+                            />
+                            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-[#D4C5FD] bg-white px-3 py-2 text-xs font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]">
+                              {qvUploading ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Upload className="h-3.5 w-3.5" />
+                              )}
+                              {qvLocalMediaName ? qvLocalMediaName : '上传 MP4 (R2)'}
+                              <input
+                                type="file"
+                                accept="video/*,.mp4,.webm,.mov"
+                                onChange={handleQuickVideoFileUpload}
+                                className="hidden"
+                              />
+                            </label>
+                            <button
+                              type="submit"
+                              className="rounded-xl bg-[#6E32F5] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#5B24D6]"
+                            >
+                              保存到章节
+                            </button>
+                          </div>
+                        </form>
                       )}
                     </>
                   )}
@@ -1152,23 +1458,123 @@ function CourseSyllabusContent() {
                                           {htmlPage.title}
                                         </span>
                                       </div>
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        {editingInlineLessonId === les.id ? (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleSaveInlineArticle(
+                                                htmlPage.id,
+                                                expandedSnapshotHtml || htmlPage.rawHtml
+                                              )
+                                            }
+                                            data-testid="course-inline-save-button"
+                                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                                          >
+                                            <Save className="h-3 w-3" />
+                                            保存修改
+                                          </button>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setInlineNotice('');
+                                              setEditingInlineLessonId(les.id);
+                                            }}
+                                            data-testid="course-inline-edit-button"
+                                            className="inline-flex items-center gap-1 rounded-lg border border-[#D4C5FD] bg-[#F9F6FF] px-2.5 py-1 text-[11px] font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]"
+                                          >
+                                            <Edit3 className="h-3 w-3" />
+                                            编辑正文 / 文内插视频
+                                          </button>
+                                        )}
                                         <Link
                                           href={`/pages/${htmlPage.id}`}
                                           className="inline-flex items-center gap-1 rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#525260] hover:border-[#6E32F5] hover:text-[#6E32F5]"
                                         >
-                                          在 Studio 编辑 / 挂载视频
+                                          全屏 Studio
                                           <ExternalLink className="h-3 w-3" />
                                         </Link>
                                         <button
                                           type="button"
-                                          onClick={() => setExpandedLessonId(null)}
+                                          onClick={() => {
+                                            setEditingInlineLessonId(null);
+                                            setExpandedLessonId(null);
+                                          }}
                                           className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#525260] hover:text-[#111118]"
                                         >
                                           收起全文
                                         </button>
                                       </div>
                                     </div>
+
+                                    {editingInlineLessonId === les.id && (
+                                      <div
+                                        className="space-y-2 rounded-xl border border-[#D4C5FD] bg-white p-3"
+                                        data-testid="course-inline-video-inserter"
+                                      >
+                                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                                          <span className="font-bold text-[#6E32F5]">
+                                            ✏️ 正文已开启直接编辑 · 可在文末插入视频讲解块（含标题与解释）
+                                          </span>
+                                          {inlineNotice && (
+                                            <span className="font-semibold text-emerald-700">
+                                              {inlineNotice}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                          <input
+                                            type="text"
+                                            value={inlineVideoTitle}
+                                            onChange={(e) => setInlineVideoTitle(e.target.value)}
+                                            placeholder="视频小标题（如 Walkthrough 演示）"
+                                            className="rounded-lg border border-[#ECECF2] bg-[#FAFAFC] px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:bg-white focus:outline-none"
+                                          />
+                                          <input
+                                            type="text"
+                                            value={inlineVideoNote}
+                                            onChange={(e) => setInlineVideoNote(e.target.value)}
+                                            placeholder="视频说明 / 重点解释（可选）"
+                                            className="rounded-lg border border-[#ECECF2] bg-[#FAFAFC] px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:bg-white focus:outline-none"
+                                          />
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <input
+                                            type="url"
+                                            value={inlineVideoUrl}
+                                            onChange={(e) => setInlineVideoUrl(e.target.value)}
+                                            placeholder="粘贴 YouTube 链接，或点击右侧上传 MP4 到 R2..."
+                                            className="min-w-[200px] flex-1 rounded-lg border border-[#ECECF2] bg-[#FAFAFC] px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:bg-white focus:outline-none"
+                                          />
+                                          <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-[#D4C5FD] bg-[#F9F6FF] px-2.5 py-1.5 text-[11px] font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]">
+                                            {inlineUploading ? (
+                                              <Loader2 className="h-3 w-3 animate-spin" />
+                                            ) : (
+                                              <Upload className="h-3 w-3" />
+                                            )}
+                                            上传 MP4
+                                            <input
+                                              type="file"
+                                              accept="video/*,.mp4,.webm,.mov"
+                                              onChange={(e) =>
+                                                handleInlineUploadVideo(e, htmlPage.id)
+                                              }
+                                              className="hidden"
+                                            />
+                                          </label>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleInsertVideoIntoArticle(htmlPage.id)
+                                            }
+                                            className="rounded-lg bg-[#6E32F5] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#5B24D6]"
+                                          >
+                                            插入到文章中
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
 
                                     {(htmlPage.videoUrl ||
                                       htmlPage.localMediaId ||
@@ -1182,13 +1588,15 @@ function CourseSyllabusContent() {
 
                                     <div className="overflow-hidden rounded-2xl border border-[#ECECF2] bg-white shadow-2xs">
                                       <iframe
+                                        ref={inlineIframeRef}
                                         title={htmlPage.title}
                                         srcDoc={
                                           cleanHtmlForReader(
                                             expandedSnapshotHtml &&
                                               expandedSnapshotHtml.length > htmlPage.rawHtml.length
                                               ? expandedSnapshotHtml
-                                              : htmlPage.rawHtml
+                                              : htmlPage.rawHtml,
+                                            { editable: editingInlineLessonId === les.id }
                                           ).cleanHtml
                                         }
                                         sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
