@@ -1,5 +1,11 @@
 import type { HtmlDesignTokens } from '@/lib/types';
 
+export interface HtmlHeadingItem {
+  id: string;
+  text: string;
+  level: number;
+}
+
 export interface HtmlParseResult {
   title: string;
   text: string;
@@ -111,10 +117,23 @@ export function extractReadableTextFromHtml(rawHtml: string): {
   if (typeof window !== 'undefined' && typeof DOMParser !== 'undefined') {
     const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
     doc
-      .querySelectorAll('script, style, noscript, svg, template, iframe')
+      .querySelectorAll(
+        'script, style, noscript, svg, template, iframe, aside, nav, header, footer, [role="navigation"], [class*="sidebar"], [class*="sidenav"]'
+      )
       .forEach((el) => el.remove());
 
-    const h1Text = doc.querySelector('h1')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    // Remove stray Save / Skip buttons
+    doc.querySelectorAll('a, button').forEach((el) => {
+      const txt = (el.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+      if (txt === 'save' || txt === 'saved' || txt.includes('skip to main content')) {
+        el.remove();
+      }
+    });
+
+    const contentRoot =
+      doc.querySelector('article') ?? doc.querySelector('main') ?? doc.body;
+    const h1Text =
+      contentRoot?.querySelector('h1')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
     const title = rawTitle || h1Text || 'Uploaded HTML Page';
 
     const blockTags = new Set([
@@ -161,8 +180,8 @@ export function extractReadableTextFromHtml(rawHtml: string): {
       }
     };
 
-    if (doc.body) {
-      walk(doc.body);
+    if (contentRoot) {
+      walk(contentRoot);
     }
 
     const text = lines
@@ -239,12 +258,16 @@ export function toYouTubeEmbedUrl(rawUrl: string): string | null {
   }
 }
 
-export function cleanHtmlForReader(rawHtml: string): {
+export function cleanHtmlForReader(
+  rawHtml: string,
+  options?: { editable?: boolean }
+): {
   cleanHtml: string;
   strippedShell: boolean;
+  headings: HtmlHeadingItem[];
 } {
   if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
-    return { cleanHtml: rawHtml, strippedShell: false };
+    return { cleanHtml: rawHtml, strippedShell: false, headings: [] };
   }
 
   const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
@@ -261,6 +284,8 @@ export function cleanHtmlForReader(rawHtml: string): {
   const shellSelectors = [
     'aside',
     'nav',
+    'header',
+    'footer',
     '[role="navigation"]',
     '[class*="sidebar"]',
     '[id*="sidebar"]',
@@ -268,6 +293,8 @@ export function cleanHtmlForReader(rawHtml: string): {
     '[class*="SideNav"]',
     '[class*="left-nav"]',
     '[class*="topbar"]',
+    '[aria-label="Breadcrumb"]',
+    '[class*="breadcrumb"]',
   ];
 
   shellSelectors.forEach((selector) => {
@@ -280,7 +307,36 @@ export function cleanHtmlForReader(rawHtml: string): {
     });
   });
 
-  // Neutralize fixed sidebar offsets & give the extracted article clean breathing room
+  // Remove stray Save / Bookmark / Skip-to-content / Lesson-contents right-rail clones
+  doc.querySelectorAll('a, button').forEach((el) => {
+    const txt = (el.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (
+      txt === 'save' ||
+      txt === 'saved' ||
+      txt === 'bookmark' ||
+      txt.includes('skip to main content')
+    ) {
+      el.remove();
+      strippedShell = true;
+    }
+  });
+
+  // Assign stable IDs to h2/h3 headings for right-rail Lesson contents TOC
+  const headings: HtmlHeadingItem[] = [];
+  const headingRoot = mainContent ?? doc.body;
+  headingRoot?.querySelectorAll('h2, h3').forEach((el, idx) => {
+    const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    const id = el.id || `bl-sec-${idx + 1}`;
+    el.id = id;
+    headings.push({
+      id,
+      text,
+      level: el.tagName.toUpperCase() === 'H2' ? 2 : 3,
+    });
+  });
+
+  // Neutralize fixed sidebar offsets & multi-column grid gaps so article fills cleanly
   const styleEl = doc.createElement('style');
   styleEl.id = 'bl-reader-clean-reset';
   styleEl.textContent = `
@@ -291,21 +347,44 @@ export function cleanHtmlForReader(rawHtml: string): {
       overflow-x: hidden !important;
     }
     body {
-      padding: 28px 32px !important;
+      padding: 24px 32px !important;
       max-width: 100% !important;
     }
-    main, article, [role="main"] {
+    body > div,
+    main,
+    article,
+    [role="main"] {
+      display: block !important;
+      grid-template-columns: none !important;
       margin-left: auto !important;
       margin-right: auto !important;
       padding-left: 0 !important;
-      max-width: 960px !important;
+      padding-right: 0 !important;
+      left: 0 !important;
+      max-width: 820px !important;
       width: 100% !important;
+    }
+    ${
+      options?.editable
+        ? `[data-bl-editable="true"] {
+      outline: 2px dashed rgba(110, 50, 245, 0.35);
+      outline-offset: 8px;
+      border-radius: 12px;
+      cursor: text;
+    }`
+        : ''
     }
   `;
   doc.head.appendChild(styleEl);
 
+  if (options?.editable && headingRoot) {
+    headingRoot.setAttribute('contenteditable', 'true');
+    headingRoot.setAttribute('data-bl-editable', 'true');
+  }
+
   return {
     cleanHtml: `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`,
     strippedShell,
+    headings,
   };
 }

@@ -101,6 +101,7 @@ interface AppContextValue {
   updateHtmlPage: (id: string, patch: Partial<DeployedHtmlPage>) => void;
   deleteHtmlPage: (id: string) => void;
   importHtmlPageToCourse: (pageId: string, track: CourseTrackId) => void;
+  syncAllHtmlPagesToCourse: (track: CourseTrackId) => void;
   syncThemeFromHtml: (tokens: HtmlDesignTokens | null) => void;
   updateGoogleCalendarUrl: (url: string) => void;
   exportBackup: () => string;
@@ -918,6 +919,79 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [commit]
   );
 
+  const syncAllHtmlPagesToCourse = useCallback(
+    (track: CourseTrackId) => {
+      const now = new Date().toISOString();
+      commit((prev) => {
+        const pages = prev.deployedHtmlPages ?? [];
+        const syllabus = prev.courses[track];
+        if (!syllabus || pages.length === 0) return prev;
+
+        const defaultStyle = syllabus.modules[0]?.titleStyle ?? {
+          fontFamily: 'Inter',
+          fontSize: 'md' as const,
+          color: '#111118',
+        };
+
+        // Group all HTML pages by moduleTitle
+        const grouped = new Map<string, typeof pages>();
+        pages.forEach((p) => {
+          const modName = p.moduleTitle?.trim() || 'Imported HTML & Video Lessons';
+          const arr = grouped.get(modName) ?? [];
+          arr.push(p);
+          grouped.set(modName, arr);
+        });
+
+        const generatedModules = Array.from(grouped.entries()).map(([modTitle, modPages], idx) => ({
+          id: `mod-html-${idx}-${modTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          title: modTitle,
+          description: `由 HTML Studio 一键同步的课程章节（共 ${modPages.length} 节）`,
+          titleStyle: defaultStyle,
+          subSections: [
+            {
+              id: `sub-html-${idx}`,
+              title: modTitle,
+              titleStyle: defaultStyle,
+              lessons: modPages.map((p) => ({
+                id: `lesson-html-${p.id}`,
+                title: p.title,
+                kind: (p.videoUrl || p.localMediaId ? 'video' : 'lesson') as 'video' | 'lesson',
+                htmlPageId: p.id,
+                videoUrl: p.videoUrl,
+                localMediaId: p.localMediaId,
+                localMediaName: p.localMediaName,
+                summary: p.extractedText.slice(0, 220) || p.title,
+                published: true,
+              })),
+            },
+          ],
+        }));
+
+        const nonHtmlModules = syllabus.modules.filter(
+          (m) => !m.id.startsWith('mod-html-')
+        );
+
+        return {
+          ...prev,
+          deployedHtmlPages: pages.map((p) => ({
+            ...p,
+            courseTrack: track,
+            updatedAt: now,
+          })),
+          courses: {
+            ...prev.courses,
+            [track]: {
+              ...syllabus,
+              modules: [...generatedModules, ...nonHtmlModules],
+              updatedAt: now,
+            },
+          },
+        };
+      });
+    },
+    [commit]
+  );
+
   const syncThemeFromHtml = useCallback(
     (tokens: HtmlDesignTokens | null) => {
       commit((prev) => ({
@@ -1052,6 +1126,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateHtmlPage,
         deleteHtmlPage,
         importHtmlPageToCourse,
+        syncAllHtmlPagesToCourse,
         syncThemeFromHtml,
         updateGoogleCalendarUrl,
         exportBackup,

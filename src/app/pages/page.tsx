@@ -22,40 +22,44 @@ export default function DeployedHtmlPagesIndex() {
   const pages = mounted ? state.deployedHtmlPages ?? [] : [];
 
   const handleUploadHtml = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     e.target.value = '';
-    if (!file) return;
+    if (files.length === 0) return;
 
-    const res = await extractDocumentText(file);
-    if (res.error) {
-      setStatusMsg(res.error);
-      return;
-    }
-    if (!res.htmlMeta) {
-      setStatusMsg('请上传 .html 或 .htm 文件。');
-      return;
-    }
-
-    const created = deployHtmlPage({
-      title: res.htmlMeta.title,
-      fileName: file.name,
-      rawHtml: res.htmlMeta.rawHtml,
-      extractedText: res.htmlMeta.text,
-      designTokens: res.htmlMeta.designTokens,
-    });
-
-    if (
-      res.htmlMeta.designTokens.fontFamily ||
-      res.htmlMeta.designTokens.accentColor ||
-      res.htmlMeta.designTokens.googleFontsHref
-    ) {
-      syncThemeFromHtml({
-        ...res.htmlMeta.designTokens,
-        sourceTitle: res.htmlMeta.title,
+    let count = 0;
+    let lastTitle = '';
+    for (const file of files) {
+      const res = await extractDocumentText(file);
+      if (res.error || !res.htmlMeta) continue;
+      const created = deployHtmlPage({
+        title: res.htmlMeta.title,
+        moduleTitle: 'Product Management Intro',
+        fileName: file.name,
+        rawHtml: res.htmlMeta.rawHtml,
+        extractedText: res.htmlMeta.text,
+        designTokens: res.htmlMeta.designTokens,
       });
-      setStatusMsg(`已部署「${created.title}」并同步其 UI 字体设计！`);
+      lastTitle = created.title;
+      count++;
+      if (
+        files.length === 1 &&
+        (res.htmlMeta.designTokens.fontFamily ||
+          res.htmlMeta.designTokens.accentColor ||
+          res.htmlMeta.designTokens.googleFontsHref)
+      ) {
+        syncThemeFromHtml({
+          ...res.htmlMeta.designTokens,
+          sourceTitle: res.htmlMeta.title,
+        });
+      }
+    }
+
+    if (count === 0) {
+      setStatusMsg('请上传 .html 或 .htm 文件。');
+    } else if (count === 1) {
+      setStatusMsg(`已部署「${lastTitle}」到课程页面库！`);
     } else {
-      setStatusMsg(`已部署「${created.title}」到本站页面！`);
+      setStatusMsg(`已批量部署 ${count} 个 HTML 页面到课程目录！`);
     }
   };
 
@@ -90,6 +94,7 @@ export default function DeployedHtmlPagesIndex() {
             ref={fileInputRef}
             type="file"
             accept=".html,.htm,text/html"
+            multiple
             onChange={handleUploadHtml}
             className="hidden"
           />

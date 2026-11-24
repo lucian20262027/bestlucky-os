@@ -493,6 +493,7 @@ export interface HtmlDesignTokens {
 export interface DeployedHtmlPage {
   id: string;
   title: string;
+  moduleTitle?: string;
   fileName: string;
   rawHtml: string;
   extractedText: string;
