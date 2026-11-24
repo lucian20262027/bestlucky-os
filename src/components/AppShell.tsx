@@ -50,7 +50,7 @@ const ROLE_ICON_MAP: Record<RoleTrack, typeof Rocket> = {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { state, mounted, syncStatus, setSettingsOpen } = useApp();
+  const { state, mounted, syncStatus, lastSyncError, retryCloudSync, setSettingsOpen } = useApp();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [heroMantraOpen, setHeroMantraOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -286,16 +286,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
           </button>
           <div className="flex items-center gap-1 pr-1">
-            <span
+            <button
+              type="button"
+              onClick={retryCloudSync}
               suppressHydrationWarning
+              data-testid="sidebar-sync-button"
               title={
                 syncStatus === 'synced'
-                  ? 'Cloud Synced'
+                  ? 'Cloud Synced (点击立即同步)'
                   : syncStatus === 'error'
-                    ? 'Sync Attention Needed'
-                    : 'Not Synced / Local Only'
+                    ? `Sync Attention Needed${lastSyncError ? ` (${lastSyncError})` : ''} · 点击重试同步`
+                    : 'Not Synced / Local Only · 点击同步'
               }
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg ${
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-[#F6F5FA] ${
                 syncStatus === 'synced'
                   ? 'text-emerald-600'
                   : syncStatus === 'error'
@@ -306,7 +309,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               }`}
             >
               <RefreshCw className="h-3.5 w-3.5" />
-            </span>
+            </button>
             <button
               type="button"
               onClick={() => setSettingsOpen(true)}

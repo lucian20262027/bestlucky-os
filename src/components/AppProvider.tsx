@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { cleanHtmlForReader } from '@/lib/html-parser';
 import {
   createDefaultState,
   exportStateAsJson,
@@ -44,6 +45,8 @@ interface AppContextValue {
   todayISO: string | null;
   syncStatus: CloudSyncStatus;
   lastSyncedAt: string | null;
+  lastSyncError: string | null;
+  retryCloudSync: () => void;
   settingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
   updateAISettings: (patch: Partial<AISettings>) => void;
@@ -116,12 +119,50 @@ function appendTodayDate(dates: string[]): string[] {
   return dates.includes(today) ? dates : [...dates, today];
 }
 
+function compactStateForCloudSync(nextState: AppState): AppState {
+  const rawPayload = JSON.stringify({ workspaceId: 'lucian-main', state: nextState });
+  if (rawPayload.length <= 3_200_000 || !nextState.deployedHtmlPages?.length) {
+    return nextState;
+  }
+
+  // First pass: strip external scripts/shells from large HTML pages
+  let compacted: AppState = {
+    ...nextState,
+    deployedHtmlPages: nextState.deployedHtmlPages.map((p) => {
+      if (p.rawHtml.length <= 120_000) return p;
+      const cleaned = cleanHtmlForReader(p.rawHtml).cleanHtml;
+      return {
+        ...p,
+        rawHtml: cleaned.replace(/data:image\/[^"')\s]{2048,}/gi, ''),
+      };
+    }),
+  };
+
+  if (JSON.stringify({ workspaceId: 'lucian-main', state: compacted }).length <= 3_800_000) {
+    return compacted;
+  }
+
+  // Second pass: cap oversized rawHtml snapshots in cloud backup while keeping extractedText intact
+  compacted = {
+    ...compacted,
+    deployedHtmlPages: compacted.deployedHtmlPages?.map((p) => ({
+      ...p,
+      rawHtml:
+        p.rawHtml.length > 220_000
+          ? `<article><h1>${p.title}</h1><p>${p.extractedText.replace(/\n/g, '</p><p>')}</p></article>`
+          : p.rawHtml,
+    })),
+  };
+  return compacted;
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(() => createDefaultState());
   const [mounted, setMounted] = useState(false);
   const [todayISO, setTodayISO] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<CloudSyncStatus>('local-only');
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [lastSyncError, setLastSyncError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const cloudConfiguredRef = useRef(false);
   const syncTimerRef = useRef<number | null>(null);
@@ -129,27 +170,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const pushStateToCloud = useCallback(async (nextState: AppState) => {
     if (!cloudConfiguredRef.current) return;
     setSyncStatus('syncing');
+    setLastSyncError(null);
     try {
+      const payloadState = compactStateForCloudSync(nextState);
       const res = await fetch('/api/sync/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId: 'lucian-main', state: nextState }),
+        body: JSON.stringify({ workspaceId: 'lucian-main', state: payloadState }),
       });
-      const json = (await res.json()) as {
+      const raw = await res.text();
+      let json: {
         configured?: boolean;
         saved?: boolean;
         updatedAt?: string;
-      };
+        error?: string;
+      } = {};
+      try {
+        json = raw ? (JSON.parse(raw) as typeof json) : {};
+      } catch {
+        json = {};
+      }
       if (res.ok && json.saved) {
         setSyncStatus('synced');
         setLastSyncedAt(json.updatedAt ?? new Date().toISOString());
+        setLastSyncError(null);
       } else {
         setSyncStatus('error');
+        setLastSyncError(json.error ?? `HTTP ${res.status}`);
       }
-    } catch {
+    } catch (err) {
       setSyncStatus('error');
+      setLastSyncError(err instanceof Error ? err.message : 'Network error');
     }
   }, []);
+
+  const retryCloudSync = useCallback(() => {
+    cloudConfiguredRef.current = true;
+    void pushStateToCloud(state);
+  }, [pushStateToCloud, state]);
 
   useEffect(() => {
     const loaded = loadAppState();
@@ -795,8 +853,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const deployHtmlPage = useCallback(
     (page: Omit<DeployedHtmlPage, 'id' | 'createdAt' | 'updatedAt'>): DeployedHtmlPage => {
       const now = new Date().toISOString();
+      const compactHtml =
+        page.rawHtml.length > 180_000
+          ? cleanHtmlForReader(page.rawHtml).cleanHtml
+          : page.rawHtml;
       const created: DeployedHtmlPage = {
         ...page,
+        rawHtml: compactHtml,
         id: `html-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         createdAt: now,
         updatedAt: now,
@@ -1081,6 +1144,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         todayISO,
         syncStatus,
         lastSyncedAt,
+        lastSyncError,
+        retryCloudSync,
         settingsOpen,
         setSettingsOpen,
         updateAISettings,
