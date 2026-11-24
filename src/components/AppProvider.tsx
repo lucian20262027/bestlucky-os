@@ -6,6 +6,7 @@ import {
   deleteHtmlSnapshot,
   saveHtmlSnapshot,
 } from '@/lib/html-snapshot-db';
+import { uploadHtmlSnapshotToR2 } from '@/lib/media-db';
 import {
   createDefaultState,
   exportStateAsJson,
@@ -905,6 +906,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...prev,
         deployedHtmlPages: [created, ...(prev.deployedHtmlPages ?? [])],
       }));
+      // Also upload lossless HTML snapshot directly to Cloudflare R2 if configured
+      void uploadHtmlSnapshotToR2(page.fileName, page.rawHtml).then((cloudUrl) => {
+        if (!cloudUrl) return;
+        commit((prev) => ({
+          ...prev,
+          deployedHtmlPages: (prev.deployedHtmlPages ?? []).map((p) =>
+            p.id === id ? { ...p, htmlCloudUrl: cloudUrl } : p
+          ),
+        }));
+      });
       return created;
     },
     [commit]
@@ -933,6 +944,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           p.id === id ? { ...p, ...patch, updatedAt: now } : p
         ),
       }));
+      if (patch.rawHtml) {
+        const htmlToUpload = patch.rawHtml;
+        const fallbackName = patch.fileName || `${id}.html`;
+        void uploadHtmlSnapshotToR2(fallbackName, htmlToUpload).then((cloudUrl) => {
+          if (!cloudUrl) return;
+          commit((prev) => ({
+            ...prev,
+            deployedHtmlPages: (prev.deployedHtmlPages ?? []).map((p) =>
+              p.id === id ? { ...p, htmlCloudUrl: cloudUrl } : p
+            ),
+          }));
+        });
+      }
     },
     [commit]
   );

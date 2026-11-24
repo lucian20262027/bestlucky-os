@@ -32,7 +32,7 @@ import { TypographyPicker } from '@/components/TypographyPicker';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import { roleBadgeClasses } from '@/lib/helpers';
 import { cleanHtmlForReader, extractReadableTextFromHtml } from '@/lib/html-parser';
-import { getHtmlSnapshot } from '@/lib/html-snapshot-db';
+import { getHtmlSnapshot, saveHtmlSnapshot } from '@/lib/html-snapshot-db';
 import { saveLocalMedia } from '@/lib/media-db';
 import { ROLES_BY_ID } from '@/lib/roles';
 import { SELF_INTRO_COURSE_META } from '@/lib/seed-courses';
@@ -121,14 +121,33 @@ function CourseSyllabusContent() {
       setExpandedSnapshotHtml(null);
       return;
     }
+    const linkedPage = htmlPagesById.get(pageId);
     let cancelled = false;
-    void getHtmlSnapshot(pageId).then((snap) => {
-      if (!cancelled) setExpandedSnapshotHtml(snap);
+    void getHtmlSnapshot(pageId).then(async (snap) => {
+      if (cancelled) return;
+      if (snap) {
+        setExpandedSnapshotHtml(snap);
+        return;
+      }
+      if (linkedPage?.htmlCloudUrl) {
+        try {
+          const res = await fetch(linkedPage.htmlCloudUrl);
+          if (res.ok) {
+            const remoteHtml = await res.text();
+            if (!cancelled && remoteHtml) {
+              setExpandedSnapshotHtml(remoteHtml);
+              void saveHtmlSnapshot(pageId, remoteHtml);
+            }
+          }
+        } catch {
+          // keep fallback rawHtml
+        }
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [expandedLessonId, course.modules]);
+  }, [expandedLessonId, course.modules, htmlPagesById]);
 
   const flatLessons = useMemo(() => {
     const list: Array<{

@@ -29,7 +29,7 @@ import {
   extractReadableTextFromHtml,
   toYouTubeEmbedUrl,
 } from '@/lib/html-parser';
-import { getHtmlSnapshot } from '@/lib/html-snapshot-db';
+import { getHtmlSnapshot, saveHtmlSnapshot } from '@/lib/html-snapshot-db';
 import { getLocalMediaBlob, saveLocalMedia } from '@/lib/media-db';
 import { ROLE_LIST } from '@/lib/roles';
 import type { CourseTrackId, DeployedHtmlPage } from '@/lib/types';
@@ -80,13 +80,31 @@ export default function DeployedHtmlPageViewer() {
       return;
     }
     let cancelled = false;
-    void getHtmlSnapshot(page.id).then((snap) => {
-      if (!cancelled) setFullSnapshotHtml(snap);
+    void getHtmlSnapshot(page.id).then(async (snap) => {
+      if (cancelled) return;
+      if (snap) {
+        setFullSnapshotHtml(snap);
+        return;
+      }
+      if (page.htmlCloudUrl) {
+        try {
+          const res = await fetch(page.htmlCloudUrl);
+          if (res.ok) {
+            const remoteHtml = await res.text();
+            if (!cancelled && remoteHtml) {
+              setFullSnapshotHtml(remoteHtml);
+              void saveHtmlSnapshot(page.id, remoteHtml);
+            }
+          }
+        } catch {
+          // keep fallback rawHtml
+        }
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [page?.id]);
+  }, [page?.id, page?.htmlCloudUrl]);
 
   const effectiveRawHtml = fullSnapshotHtml && fullSnapshotHtml.length > (page?.rawHtml.length ?? 0)
     ? fullSnapshotHtml

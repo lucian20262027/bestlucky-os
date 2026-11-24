@@ -496,6 +496,7 @@ export interface DeployedHtmlPage {
   moduleTitle?: string;
   fileName: string;
   rawHtml: string;
+  htmlCloudUrl?: string;
   extractedText: string;
   designTokens: HtmlDesignTokens;
   videoUrl?: string;

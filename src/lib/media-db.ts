@@ -30,6 +30,40 @@ function openMediaDb(): Promise<IDBDatabase> {
   });
 }
 
+export async function uploadHtmlSnapshotToR2(
+  fileName: string,
+  rawHtml: string
+): Promise<string | null> {
+  try {
+    const presignRes = await fetch('/api/sync/r2-presign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileName,
+        contentType: 'text/html; charset=utf-8',
+        folder: 'html',
+      }),
+    });
+    if (!presignRes.ok) return null;
+    const presignJson = (await presignRes.json()) as {
+      configured?: boolean;
+      uploadUrl?: string;
+      accessUrl?: string;
+    };
+    if (!presignJson.configured || !presignJson.uploadUrl || !presignJson.accessUrl) {
+      return null;
+    }
+    const putRes = await fetch(presignJson.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      body: new Blob([rawHtml], { type: 'text/html; charset=utf-8' }),
+    });
+    return putRes.ok ? presignJson.accessUrl : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function saveLocalMedia(file: File): Promise<{
   id: string;
   name: string;
@@ -38,15 +72,52 @@ export async function saveLocalMedia(file: File): Promise<{
   cloudUrl?: string;
 }> {
   let cloudUrl: string | undefined;
+
+  // 1. Prefer Cloudflare R2 / S3 direct presigned upload (zero 4.5MB limit, zero egress fee)
   try {
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const blob = await upload(`loopos/${Date.now()}-${safeName}`, file, {
-      access: 'private',
-      handleUploadUrl: '/api/sync/upload',
+    const contentType = file.type || 'application/octet-stream';
+    const presignRes = await fetch('/api/sync/r2-presign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileName: file.name,
+        contentType,
+        folder: 'videos',
+      }),
     });
-    cloudUrl = `/api/sync/blob?url=${encodeURIComponent(blob.url)}`;
+    if (presignRes.ok) {
+      const presignJson = (await presignRes.json()) as {
+        configured?: boolean;
+        uploadUrl?: string;
+        accessUrl?: string;
+      };
+      if (presignJson.configured && presignJson.uploadUrl && presignJson.accessUrl) {
+        const putRes = await fetch(presignJson.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': contentType },
+          body: file,
+        });
+        if (putRes.ok) {
+          cloudUrl = presignJson.accessUrl;
+        }
+      }
+    }
   } catch {
-    // Vercel Blob not configured or offline — keep local IndexedDB seamlessly
+    // Fall through to Vercel Blob / IndexedDB
+  }
+
+  // 2. Fallback to Vercel Blob if configured and R2 wasn't used
+  if (!cloudUrl) {
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const blob = await upload(`loopos/${Date.now()}-${safeName}`, file, {
+        access: 'private',
+        handleUploadUrl: '/api/sync/upload',
+      });
+      cloudUrl = `/api/sync/blob?url=${encodeURIComponent(blob.url)}`;
+    } catch {
+      // Vercel Blob not configured or offline — keep local IndexedDB seamlessly
+    }
   }
 
   const db = await openMediaDb();
