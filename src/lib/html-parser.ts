@@ -107,12 +107,24 @@ export function extractDesignTokensFromHtml(rawHtml: string): HtmlDesignTokens {
   return tokens;
 }
 
+function decodeBasicHtmlEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+}
+
 export function extractReadableTextFromHtml(rawHtml: string): {
   title: string;
   text: string;
 } {
   const titleMatch = rawHtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const rawTitle = titleMatch?.[1]?.replace(/\s+/g, ' ').trim() ?? '';
+  const rawTitle = decodeBasicHtmlEntities(
+    titleMatch?.[1]?.replace(/\s+/g, ' ').trim() ?? ''
+  );
 
   if (typeof window !== 'undefined' && typeof DOMParser !== 'undefined') {
     const doc = new DOMParser().parseFromString(rawHtml, 'text/html');

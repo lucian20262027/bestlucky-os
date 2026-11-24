@@ -16,6 +16,7 @@ import {
   ExternalLink,
   FileText,
   Film,
+  GripVertical,
   LayoutGrid,
   Loader2,
   Play,
@@ -73,6 +74,14 @@ function CourseSyllabusContent() {
   const [editMode, setEditMode] = useState(false);
   const [collapsedSubs, setCollapsedSubs] = useState<Record<string, boolean>>({});
   const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
+  const [draggingModuleId, setDraggingModuleId] = useState<string | null>(null);
+  const [dragOverModuleId, setDragOverModuleId] = useState<string | null>(null);
+  const [draggingLesson, setDraggingLesson] = useState<{
+    modId: string;
+    subId: string;
+    lessonId: string;
+  } | null>(null);
+  const [dragOverLessonId, setDragOverLessonId] = useState<string | null>(null);
   const [addingTarget, setAddingTarget] = useState<{
     moduleId: string;
     subSectionId: string;
@@ -112,6 +121,45 @@ function CourseSyllabusContent() {
     );
     return list;
   }, [course.modules]);
+
+  const reorderModules = (fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    const fromIdx = course.modules.findIndex((m) => m.id === fromId);
+    const toIdx = course.modules.findIndex((m) => m.id === toId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const next = [...course.modules];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    saveCourse({ ...course, modules: next });
+  };
+
+  const reorderLessons = (
+    modId: string,
+    subId: string,
+    fromLessonId: string,
+    toLessonId: string
+  ) => {
+    if (fromLessonId === toLessonId) return;
+    saveCourse({
+      ...course,
+      modules: course.modules.map((m) => {
+        if (m.id !== modId) return m;
+        return {
+          ...m,
+          subSections: m.subSections.map((s) => {
+            if (s.id !== subId) return s;
+            const fromIdx = s.lessons.findIndex((l) => l.id === fromLessonId);
+            const toIdx = s.lessons.findIndex((l) => l.id === toLessonId);
+            if (fromIdx < 0 || toIdx < 0) return s;
+            const nextLessons = [...s.lessons];
+            const [moved] = nextLessons.splice(fromIdx, 1);
+            nextLessons.splice(toIdx, 0, moved);
+            return { ...s, lessons: nextLessons };
+          }),
+        };
+      }),
+    });
+  };
 
   const jumpToLesson = (item: {
     lesson: CourseLessonItem;
@@ -550,7 +598,39 @@ function CourseSyllabusContent() {
           return (
             <section
               key={mod.id}
-              className="rounded-3xl border border-[#ECECF2] bg-white p-6 shadow-[0_1px_2px_rgba(16,16,24,0.03)] sm:p-7"
+              draggable={!editMode && !expandedLessonId}
+              onDragStart={(e) => {
+                if (editMode || expandedLessonId) return;
+                setDraggingModuleId(mod.id);
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', `mod:${mod.id}`);
+              }}
+              onDragOver={(e) => {
+                if (!draggingModuleId || draggingModuleId === mod.id) return;
+                e.preventDefault();
+                setDragOverModuleId(mod.id);
+              }}
+              onDragLeave={() => {
+                if (dragOverModuleId === mod.id) setDragOverModuleId(null);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (draggingModuleId && draggingModuleId !== mod.id) {
+                  reorderModules(draggingModuleId, mod.id);
+                }
+                setDraggingModuleId(null);
+                setDragOverModuleId(null);
+              }}
+              onDragEnd={() => {
+                setDraggingModuleId(null);
+                setDragOverModuleId(null);
+              }}
+              data-testid={`course-module-card-${mod.id}`}
+              className={`rounded-3xl border bg-white p-6 shadow-[0_1px_2px_rgba(16,16,24,0.03)] transition sm:p-7 ${
+                dragOverModuleId === mod.id
+                  ? 'border-[#6E32F5] ring-2 ring-[#6E32F5]/25'
+                  : 'border-[#ECECF2]'
+              }`}
             >
               {/* Module Big Title Header */}
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -632,15 +712,23 @@ function CourseSyllabusContent() {
                     </div>
                   ) : (
                     <>
-                      <h2
-                        style={getTypographyStyle(mod.titleStyle)}
-                        className={`text-[#111118] ${getTypographyClasses(
-                          mod.titleStyle,
-                          'heading'
-                        )}`}
-                      >
-                        {mod.title}
-                      </h2>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="cursor-grab text-[#B0B0C0] hover:text-[#6E32F5] active:cursor-grabbing"
+                          title="拖拽调整大章节前后顺序"
+                        >
+                          <GripVertical className="h-4 w-4" />
+                        </span>
+                        <h2
+                          style={getTypographyStyle(mod.titleStyle)}
+                          className={`text-[#111118] ${getTypographyClasses(
+                            mod.titleStyle,
+                            'heading'
+                          )}`}
+                        >
+                          {mod.title}
+                        </h2>
+                      </div>
                       <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-[#848494]">
                         <span className="inline-flex items-center gap-1">
                           <LayoutGrid className="h-3.5 w-3.5" />
@@ -673,13 +761,19 @@ function CourseSyllabusContent() {
                     (l) => l.kind === 'video' || l.videoUrl || l.localMediaId
                   ).length;
 
+                  const hideRedundantSubHeader =
+                    !editMode &&
+                    mod.subSections.length === 1 &&
+                    sub.title.trim().toLowerCase() === mod.title.trim().toLowerCase();
+
                   return (
                     <div
                       key={sub.id}
                       className="overflow-hidden rounded-2xl border border-[#ECECF2] bg-white"
                     >
-                      {/* Sub-section Header */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 bg-[#FAFAFC] px-4 py-3">
+                      {/* Sub-section Header (hidden when single subsection repeats module title) */}
+                      {!hideRedundantSubHeader && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 bg-[#FAFAFC] px-4 py-3">
                         {editMode ? (
                           <div className="flex w-full flex-wrap items-center justify-between gap-2">
                             <input
@@ -774,7 +868,8 @@ function CourseSyllabusContent() {
                             </span>
                           </>
                         )}
-                      </div>
+                        </div>
+                      )}
 
                       {/* Lessons List */}
                       {!isCollapsed && (
@@ -830,7 +925,7 @@ function CourseSyllabusContent() {
 
                                 <div className="min-w-0 flex-1">
                                   <div className="truncate text-[13.5px] font-medium text-[#111118] hover:text-[#6E32F5]">
-                                    {les.title}
+                                    {les.title.replace(/&amp;/g, '&')}
                                   </div>
                                   {displaySummary && (
                                     <div className="truncate text-xs text-[#848494]">
@@ -842,8 +937,75 @@ function CourseSyllabusContent() {
                             );
 
                             return (
-                              <div key={les.id} id={`course-lesson-${les.id}`}>
+                              <div
+                                key={les.id}
+                                id={`course-lesson-${les.id}`}
+                                draggable={!editMode && !isExpanded}
+                                onDragStart={(e) => {
+                                  if (editMode || isExpanded) return;
+                                  e.stopPropagation();
+                                  setDraggingLesson({
+                                    modId: mod.id,
+                                    subId: sub.id,
+                                    lessonId: les.id,
+                                  });
+                                  e.dataTransfer.effectAllowed = 'move';
+                                  e.dataTransfer.setData('text/plain', `les:${les.id}`);
+                                }}
+                                onDragOver={(e) => {
+                                  if (
+                                    !draggingLesson ||
+                                    draggingLesson.modId !== mod.id ||
+                                    draggingLesson.subId !== sub.id ||
+                                    draggingLesson.lessonId === les.id
+                                  ) {
+                                    return;
+                                  }
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setDragOverLessonId(les.id);
+                                }}
+                                onDragLeave={() => {
+                                  if (dragOverLessonId === les.id) setDragOverLessonId(null);
+                                }}
+                                onDrop={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (
+                                    draggingLesson &&
+                                    draggingLesson.modId === mod.id &&
+                                    draggingLesson.subId === sub.id &&
+                                    draggingLesson.lessonId !== les.id
+                                  ) {
+                                    reorderLessons(
+                                      mod.id,
+                                      sub.id,
+                                      draggingLesson.lessonId,
+                                      les.id
+                                    );
+                                  }
+                                  setDraggingLesson(null);
+                                  setDragOverLessonId(null);
+                                }}
+                                onDragEnd={() => {
+                                  setDraggingLesson(null);
+                                  setDragOverLessonId(null);
+                                }}
+                                className={
+                                  dragOverLessonId === les.id
+                                    ? 'bg-[#F3ECFF]/70 ring-1 ring-inset ring-[#6E32F5]/40'
+                                    : ''
+                                }
+                              >
                                 <div className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-[#FAFAFC]">
+                                  {!editMode && !isExpanded && (
+                                    <span
+                                      className="cursor-grab text-[#C8C8D4] hover:text-[#6E32F5] active:cursor-grabbing"
+                                      title="拖拽调整课程前后排序"
+                                    >
+                                      <GripVertical className="h-3.5 w-3.5" />
+                                    </span>
+                                  )}
                                   {isInlineExpandable ? (
                                     <button
                                       type="button"
