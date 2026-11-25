@@ -19,11 +19,13 @@ const FONT_OPTIONS = [
 ];
 
 const SIZE_OPTIONS = [
-  { label: '18px', size: '18px', execSize: '2' },
+  { label: '18px', size: '18px', execSize: '1' },
+  { label: '20px', size: '20px', execSize: '2' },
   { label: '22px', size: '22px', execSize: '3' },
-  { label: '26px', size: '26px', execSize: '4' },
-  { label: '30px', size: '30px', execSize: '5' },
-  { label: '36px', size: '36px', execSize: '6' },
+  { label: '24px', size: '24px', execSize: '4' },
+  { label: '26px', size: '26px', execSize: '5' },
+  { label: '30px', size: '30px', execSize: '6' },
+  { label: '36px', size: '36px', execSize: '7' },
 ];
 
 const COLOR_SWATCHES = [
