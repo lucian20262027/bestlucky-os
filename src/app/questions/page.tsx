@@ -53,12 +53,12 @@ function QuestionBankInner() {
     deleteCustomQuestion,
     updateQuestionNotes,
     updateAISettings,
+    updateCustomCategories,
   } = useApp();
 
-  const [roleFilters, setRoleFilters] = useState<RoleTrack[]>(
-    validInitialRole === 'all' ? [] : [validInitialRole]
-  );
   const [categoryFilter, setCategoryFilter] = useState<QuestionCategory | 'all'>('all');
+  const [managingCategories, setManagingCategories] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
   const [roundFilter, setRoundFilter] = useState<RoundType | 'all'>('all');
   const [difficultyFilter, setDifficultyFilter] = useState<Difficulty | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<QuestionStatus | 'all'>('all');
@@ -68,48 +68,27 @@ function QuestionBankInner() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<InterviewQuestion | null>(null);
 
-  useEffect(() => {
-    const paramRole = searchParams.get('role');
-    if (paramRole && ROLES_BY_ID[paramRole as RoleTrack]) {
-      setRoleFilters([paramRole as RoleTrack]);
-    } else if (!paramRole) {
-      setRoleFilters([]);
-    }
-  }, [searchParams]);
-
-  const toggleRoleFilter = (r: RoleTrack) => {
-    setRoleFilters((prev) =>
-      prev.includes(r) ? prev.filter((item) => item !== r) : [...prev, r]
-    );
-  };
+  const categoriesList = useMemo(
+    () =>
+      state.customCategories && state.customCategories.length > 0
+        ? state.customCategories
+        : QUESTION_CATEGORIES,
+    [state.customCategories]
+  );
 
   const allQuestions = useMemo(() => getAllQuestions(state), [state]);
 
-  const roleCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: allQuestions.length };
-    ROLE_LIST.forEach((r) => {
-      counts[r.id] = allQuestions.filter(
-        (q) => q.role === r.id || q.secondaryRoles.includes(r.id)
-      ).length;
-    });
-    return counts;
-  }, [allQuestions]);
-
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { all: allQuestions.length };
-    QUESTION_CATEGORIES.forEach((cat) => {
+    categoriesList.forEach((cat) => {
       counts[cat.id] = allQuestions.filter((q) => inferQuestionCategory(q) === cat.id).length;
     });
     return counts;
-  }, [allQuestions]);
+  }, [allQuestions, categoriesList]);
 
   const filteredQuestions = useMemo(() => {
     const qLower = search.trim().toLowerCase();
     return allQuestions.filter((item) => {
-      if (roleFilters.length > 0) {
-        const itemRoles = [item.role, ...item.secondaryRoles];
-        if (!roleFilters.some((rf) => itemRoles.includes(rf))) return false;
-      }
       if (categoryFilter !== 'all' && inferQuestionCategory(item) !== categoryFilter) {
         return false;
       }
@@ -131,7 +110,6 @@ function QuestionBankInner() {
     });
   }, [
     allQuestions,
-    roleFilters,
     categoryFilter,
     roundFilter,
     difficultyFilter,
@@ -213,73 +191,135 @@ function QuestionBankInner() {
         </Link>
       </div>
 
-      {/* Multi-select Track Filter Pills */}
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setRoleFilters([])}
-          className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
-            roleFilters.length === 0
-              ? 'border-[#111118] bg-[#111118] text-white'
-              : 'border-[#ECECF2] bg-white text-[#525260] hover:text-[#111118]'
-          }`}
-        >
-          All Tracks ({roleCounts.all})
-        </button>
-        {ROLE_LIST.map((r) => {
-          const active = roleFilters.includes(r.id);
-          return (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => toggleRoleFilter(r.id)}
-              className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
-                active
-                  ? 'border-[#6E32F5] bg-[#6E32F5] text-white'
-                  : 'border-[#ECECF2] bg-white text-[#525260] hover:text-[#111118]'
-              }`}
-            >
-              {r.shortLabel} ({roleCounts[r.id] ?? 0})
-            </button>
-          );
-        })}
-        {roleFilters.length > 1 && (
-          <span className="text-[11px] font-medium text-[#6E32F5]">
-            Multi-selected ({roleFilters.length})
-          </span>
-        )}
-      </div>
+      {/* Question Category Pills (问题大类) + Category Manager */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setCategoryFilter('all')}
+            className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
+              categoryFilter === 'all'
+                ? 'border-[#6E32F5] bg-[#F3ECFF] text-[#6E32F5]'
+                : 'border-[#ECECF2] bg-white text-[#5E5E6E] hover:border-[#6E32F5]/40'
+            }`}
+          >
+            All Categories ({categoryCounts.all})
+          </button>
+          {categoriesList.map((cat) => {
+            const active = categoryFilter === cat.id;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setCategoryFilter(cat.id)}
+                className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
+                  active
+                    ? 'border-[#6E32F5] bg-[#6E32F5] text-white'
+                    : 'border-[#ECECF2] bg-white text-[#5E5E6E] hover:border-[#6E32F5]/40 hover:text-[#111118]'
+                }`}
+              >
+                {cat.label} ({categoryCounts[cat.id] ?? 0})
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setManagingCategories((v) => !v)}
+            data-testid="manage-categories-button"
+            className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
+              managingCategories
+                ? 'border-[#6E32F5] bg-[#F3ECFF] text-[#6E32F5]'
+                : 'border-dashed border-[#D4C5FD] bg-white text-[#6E32F5] hover:bg-[#F9F6FF]'
+            }`}
+          >
+            <Edit3 className="h-3 w-3" />
+            {managingCategories ? '完成分类管理' : '管理分类'}
+          </button>
+        </div>
 
-      {/* Question Category Pills (问题大类) */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => setCategoryFilter('all')}
-          className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
-            categoryFilter === 'all'
-              ? 'border-[#6E32F5] bg-[#F3ECFF] text-[#6E32F5]'
-              : 'border-[#ECECF2] bg-white text-[#5E5E6E] hover:border-[#6E32F5]/40'
-          }`}
-        >
-          All Categories ({categoryCounts.all})
-        </button>
-        {QUESTION_CATEGORIES.map((cat) => {
-          const active = categoryFilter === cat.id;
-          return (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => setCategoryFilter(cat.id)}
-              className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
-                active
-                  ? 'border-[#6E32F5] bg-[#6E32F5] text-white'
-                  : 'border-[#ECECF2] bg-white text-[#5E5E6E] hover:border-[#6E32F5]/40 hover:text-[#111118]'
-              }`}
-            >
-              {cat.label} ({categoryCounts[cat.id] ?? 0})
-            </button>
-          );
-        })}
+        {managingCategories && (
+          <div
+            className="space-y-2.5 rounded-2xl border border-[#D4C5FD] bg-[#FAF8FF] p-3.5"
+            data-testid="category-manager-panel"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-bold text-[#6E32F5]">
+                自定义问题分类（支持重命名、删除与新增）
+              </span>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="新分类名称 (如 AI Agents)"
+                  data-testid="new-category-input"
+                  className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1 text-xs focus:border-[#6E32F5] focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const label = newCategoryName.trim();
+                    if (!label) return;
+                    const id =
+                      label
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]+/g, '-')
+                        .replace(/^-|-$/g, '') || `cat-${Date.now()}`;
+                    updateCustomCategories([
+                      ...categoriesList,
+                      {
+                        id,
+                        label,
+                        shortLabel: label,
+                        badgeClass: 'bg-[#F3ECFF] text-[#6E32F5]',
+                      },
+                    ]);
+                    setNewCategoryName('');
+                  }}
+                  data-testid="add-category-button"
+                  className="inline-flex items-center gap-1 rounded-lg bg-[#6E32F5] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#5B24D6]"
+                >
+                  <Plus className="h-3 w-3" />
+                  新增分类
+                </button>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {categoriesList.map((cat) => (
+                <div
+                  key={cat.id}
+                  className="flex items-center gap-1.5 rounded-xl border border-[#ECECF2] bg-white px-2.5 py-1.5"
+                >
+                  <input
+                    type="text"
+                    value={cat.label}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      updateCustomCategories(
+                        categoriesList.map((c) =>
+                          c.id === cat.id ? { ...c, label: val, shortLabel: val } : c
+                        )
+                      );
+                    }}
+                    className="min-w-0 flex-1 bg-transparent text-xs font-medium text-[#111118] focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (categoriesList.length <= 1) return;
+                      updateCustomCategories(categoriesList.filter((c) => c.id !== cat.id));
+                      if (categoryFilter === cat.id) setCategoryFilter('all');
+                    }}
+                    className="rounded p-1 text-[#848494] hover:bg-rose-50 hover:text-rose-600"
+                    title="删除分类"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Search & Secondary Filters */}
@@ -373,7 +413,7 @@ function QuestionBankInner() {
                         </span>
                       ))}
                       {(() => {
-                        const catMeta = getCategoryMeta(inferQuestionCategory(q));
+                        const catMeta = getCategoryMeta(inferQuestionCategory(q), categoriesList);
                         return (
                           <span
                             className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${catMeta.badgeClass}`}
@@ -436,58 +476,13 @@ function QuestionBankInner() {
                     >
                       {q.title}
                     </Link>
-                    {(() => {
-                      const showAll = Boolean(expandedAnswers[q.id]);
-                      const modelText = (notes?.modelAnswer || q.modelAnswer || '').trim();
-                      const isLong = q.prompt.length > 220 || modelText.length > 0;
-                      return (
-                        <div className="space-y-2">
-                          <p
-                            className={`whitespace-pre-wrap text-[13px] leading-relaxed text-[#525260] ${
-                              !showAll && q.prompt.length > 220 ? 'line-clamp-3' : ''
-                            }`}
-                          >
-                            {q.prompt}
-                          </p>
-                          {modelText && (
-                            <div className="rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-3.5 py-2.5">
-                              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#6E32F5]">
-                                Model / Reference Answer
-                              </div>
-                              <p
-                                className={`whitespace-pre-wrap text-xs leading-relaxed text-[#2E2E3A] ${
-                                  !showAll ? 'line-clamp-4' : ''
-                                }`}
-                              >
-                                {modelText}
-                              </p>
-                            </div>
-                          )}
-                          {isLong && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpandedAnswers((prev) => ({
-                                  ...prev,
-                                  [q.id]: !prev[q.id],
-                                }))
-                              }
-                              className="inline-flex items-center gap-1 text-xs font-semibold text-[#6E32F5] hover:underline"
-                            >
-                              {showAll ? (
-                                <>
-                                  Collapse (收起) <ChevronUp className="h-3.5 w-3.5" />
-                                </>
-                              ) : (
-                                <>
-                                  Show All (展开完整回答) <ChevronDown className="h-3.5 w-3.5" />
-                                </>
-                              )}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    <p
+                      className={`whitespace-pre-wrap text-[13px] leading-relaxed text-[#525260] ${
+                        !expandedAnswers[q.id] && q.prompt.length > 220 ? 'line-clamp-3' : ''
+                      }`}
+                    >
+                      {q.prompt}
+                    </p>
                     {state.aiSettings.language !== 'en' && (
                       <p className="rounded-lg bg-amber-50/70 px-3 py-1.5 text-xs text-amber-950">
                         {q.promptZhHint}
@@ -539,6 +534,64 @@ function QuestionBankInner() {
                     </div>
                   </div>
                 </div>
+
+                {/* Full-Width Model Answer Box (Wider Reading Layout) */}
+                {(() => {
+                  const showAll = Boolean(expandedAnswers[q.id]);
+                  const modelText = (notes?.modelAnswer || q.modelAnswer || '').trim();
+                  const modelHtml = notes?.modelAnswerHtml?.trim();
+                  const isLong = q.prompt.length > 220 || modelText.length > 0;
+                  if (!modelText && !isLong) return null;
+                  return (
+                    <div className="mt-3 space-y-2">
+                      {(modelText || modelHtml) && (
+                        <div className="w-full rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-4 py-3">
+                          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#6E32F5]">
+                            Model / Reference Answer
+                          </div>
+                          {modelHtml ? (
+                            <div
+                              className={`text-xs leading-relaxed text-[#2E2E3A] [&>p]:mb-1.5 ${
+                                !showAll ? 'line-clamp-4' : ''
+                              }`}
+                              dangerouslySetInnerHTML={{ __html: modelHtml }}
+                            />
+                          ) : (
+                            <p
+                              className={`whitespace-pre-wrap text-xs leading-relaxed text-[#2E2E3A] ${
+                                !showAll ? 'line-clamp-4' : ''
+                              }`}
+                            >
+                              {modelText}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {isLong && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedAnswers((prev) => ({
+                              ...prev,
+                              [q.id]: !prev[q.id],
+                            }))
+                          }
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-[#6E32F5] hover:underline"
+                        >
+                          {showAll ? (
+                            <>
+                              Collapse (收起) <ChevronUp className="h-3.5 w-3.5" />
+                            </>
+                          ) : (
+                            <>
+                              Show All (展开完整回答) <ChevronDown className="h-3.5 w-3.5" />
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {expanded && (
                   <div className="mt-4 grid gap-4 border-t border-[#ECECF2] pt-4 md:grid-cols-3">
@@ -608,7 +661,7 @@ function QuestionBankInner() {
         }}
         initialQuestion={editingQuestion}
         initialNotes={editingQuestion ? state.questionNotes[editingQuestion.id] : undefined}
-        defaultRole={roleFilters[0] ?? 'fde'}
+        defaultRole="fde"
         onSave={(savedQ, initialNotes) => {
           if (editingQuestion) {
             updateCustomQuestion(savedQ);

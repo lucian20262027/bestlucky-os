@@ -755,9 +755,6 @@ function CourseSyllabusContent() {
                   >
                     {course.heroTitle}
                   </h1>
-                  <span className="rounded-full bg-[#F3ECFF] px-3 py-0.5 text-[11px] font-bold tracking-wide text-[#6E32F5]">
-                    {course.editionBadge}
-                  </span>
                 </div>
                 <p className="text-sm leading-relaxed text-[#525260]">{course.heroSubtitle}</p>
               </>

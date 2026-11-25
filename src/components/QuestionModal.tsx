@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Loader2, Upload, Video, X } from 'lucide-react';
+import { useApp } from './AppProvider';
 import { RoleMultiSelect } from './RoleMultiSelect';
 import { inferQuestionCategory, QUESTION_CATEGORIES } from '@/lib/helpers';
 import { saveLocalMedia } from '@/lib/media-db';
@@ -32,6 +33,11 @@ export function QuestionModal({
   initialQuestion = null,
   initialNotes,
 }: QuestionModalProps) {
+  const { state } = useApp();
+  const categoriesList =
+    state.customCategories && state.customCategories.length > 0
+      ? state.customCategories
+      : QUESTION_CATEGORIES;
   const [title, setTitle] = useState('');
   const [roles, setRoles] = useState<RoleTrack[]>([defaultRole]);
   const [round, setRound] = useState<RoundType>('decomposition');
@@ -264,7 +270,7 @@ export function QuestionModal({
                 onChange={(e) => setCategory(e.target.value as QuestionCategory)}
                 className="mt-1 w-full rounded-lg border border-[#ECECF2] bg-white px-2.5 py-2 text-xs focus:border-[#6E32F5] focus:outline-none"
               >
-                {QUESTION_CATEGORIES.map((c) => (
+                {categoriesList.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.label}
                   </option>

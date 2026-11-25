@@ -66,8 +66,20 @@ export const QUESTION_CATEGORIES: Array<{
   },
 ];
 
-export function getCategoryMeta(cat: QuestionCategory) {
-  return QUESTION_CATEGORIES.find((c) => c.id === cat) ?? QUESTION_CATEGORIES[0];
+export function getCategoryMeta(
+  cat: QuestionCategory,
+  customList?: Array<{ id: string; label: string; shortLabel: string; badgeClass: string }>
+) {
+  const list = customList && customList.length > 0 ? customList : QUESTION_CATEGORIES;
+  return (
+    list.find((c) => c.id === cat) ??
+    QUESTION_CATEGORIES.find((c) => c.id === cat) ?? {
+      id: cat,
+      label: cat,
+      shortLabel: cat,
+      badgeClass: 'bg-[#F3ECFF] text-[#6E32F5]',
+    }
+  );
 }
 
 export function inferQuestionCategory(q: InterviewQuestion): QuestionCategory {

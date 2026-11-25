@@ -6,7 +6,9 @@ import { usePathname } from 'next/navigation';
 import { BrandChimeLogo } from '@/components/BrandChimeLogo';
 import { HeroMantraModal } from '@/components/HeroMantraModal';
 import {
+  ArrowDown,
   ArrowRight,
+  ArrowUp,
   BookMarked,
   BookOpen,
   Briefcase,
@@ -22,10 +24,12 @@ import {
   MessageSquare,
   RefreshCw,
   Rocket,
+  RotateCcw,
   Search,
   Settings,
   Sparkles,
   Target,
+  Trash2,
   Video,
   Wand2,
   X,
@@ -50,11 +54,12 @@ const ROLE_ICON_MAP: Record<RoleTrack, typeof Rocket> = {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { state, mounted, syncStatus, lastSyncError, retryCloudSync, setSettingsOpen } = useApp();
+  const { state, mounted, syncStatus, lastSyncError, retryCloudSync, updateCourseNav, setSettingsOpen } = useApp();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [heroMantraOpen, setHeroMantraOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [flyout, setFlyout] = useState<'courses' | 'questions' | 'stories' | null>(null);
+  const [coursesEditMode, setCoursesEditMode] = useState(false);
   const closeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -384,48 +389,155 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </>
             ) : (
               <>
-                <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#848494]">
-                  {flyout === 'courses' ? 'INTERVIEW COURSES' : 'TOP QUESTIONS BY ROLE'}
+                <div className="flex items-center justify-between px-2.5 py-1.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[#848494]">
+                    {flyout === 'courses' ? 'INTERVIEW COURSES' : 'TOP QUESTIONS BY ROLE'}
+                  </span>
+                  {flyout === 'courses' && (
+                    <button
+                      type="button"
+                      onClick={() => setCoursesEditMode((v) => !v)}
+                      data-testid="courses-flyout-edit-toggle"
+                      className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold transition ${
+                        coursesEditMode
+                          ? 'bg-[#6E32F5] text-white'
+                          : 'bg-[#F3ECFF] text-[#6E32F5] hover:bg-[#E7DAFF]'
+                      }`}
+                    >
+                      {coursesEditMode ? '完成' : '排序/删减'}
+                    </button>
+                  )}
                 </div>
                 <div className="mt-1 space-y-0.5">
-                  {ROLE_LIST.map((r) => {
-                    const Icon = ROLE_ICON_MAP[r.id] ?? Compass;
-                    const href =
-                      flyout === 'courses' ? `/courses/${r.id}` : `/questions?role=${r.id}`;
+                  {(() => {
+                    const defaultEntries = [
+                      ...ROLE_LIST.map((r) => ({
+                        id: r.id,
+                        defaultLabel: r.label,
+                        Icon: ROLE_ICON_MAP[r.id] ?? Compass,
+                      })),
+                      {
+                        id: 'self-intro',
+                        defaultLabel: 'Self Intro & Company Culture Fit',
+                        Icon: Sparkles,
+                      },
+                    ];
+
+                    if (flyout !== 'courses') {
+                      return ROLE_LIST.map((r) => {
+                        const Icon = ROLE_ICON_MAP[r.id] ?? Compass;
+                        return (
+                          <Link
+                            key={r.id}
+                            href={`/questions?role=${r.id}`}
+                            onClick={() => setFlyout(null)}
+                            className="flex items-center justify-between rounded-xl px-2.5 py-2 text-[13px] font-medium text-[#2E2E3A] transition hover:bg-[#F3ECFF] hover:text-[#6E32F5]"
+                          >
+                            <span className="flex items-center gap-2.5">
+                              <Icon className="h-4 w-4 text-[#848494]" />
+                              <span>{r.label}</span>
+                            </span>
+                          </Link>
+                        );
+                      });
+                    }
+
+                    const savedOrder = state.courseNavOrder ?? [];
+                    const hiddenSet = new Set(state.hiddenCourseTracks ?? []);
+                    const orderedEntries = [...defaultEntries].sort((a, b) => {
+                      const ia = savedOrder.indexOf(a.id);
+                      const ib = savedOrder.indexOf(b.id);
+                      if (ia === -1 && ib === -1) return 0;
+                      if (ia === -1) return 1;
+                      if (ib === -1) return -1;
+                      return ia - ib;
+                    });
+                    const visibleEntries = orderedEntries.filter((e) => !hiddenSet.has(e.id));
+
+                    const moveCourse = (idx: number, dir: -1 | 1) => {
+                      const nextIds = visibleEntries.map((e) => e.id);
+                      const targetIdx = idx + dir;
+                      if (targetIdx < 0 || targetIdx >= nextIds.length) return;
+                      [nextIds[idx], nextIds[targetIdx]] = [nextIds[targetIdx], nextIds[idx]];
+                      const hiddenIds = orderedEntries
+                        .filter((e) => hiddenSet.has(e.id))
+                        .map((e) => e.id);
+                      updateCourseNav([...nextIds, ...hiddenIds], Array.from(hiddenSet));
+                    };
+
+                    const hideCourse = (id: string) => {
+                      const nextHidden = Array.from(new Set([...hiddenSet, id]));
+                      const nextOrder = orderedEntries.map((e) => e.id);
+                      updateCourseNav(nextOrder, nextHidden);
+                    };
+
                     return (
-                      <Link
-                        key={r.id}
-                        href={href}
-                        onClick={() => setFlyout(null)}
-                        className="flex items-center justify-between rounded-xl px-2.5 py-2 text-[13px] font-medium text-[#2E2E3A] transition hover:bg-[#F3ECFF] hover:text-[#6E32F5]"
-                      >
-                        <span className="flex items-center gap-2.5">
-                          <Icon className="h-4 w-4 text-[#848494]" />
-                          <span>{r.label}</span>
-                        </span>
-                        {(r.id === 'fde' || r.id === 'fdpm' || r.id === 'ai-pm') && (
-                          <span className="rounded-full bg-[#F3ECFF] px-2 py-0.5 text-[10px] font-semibold text-[#6E32F5]">
-                            2026
-                          </span>
+                      <>
+                        {visibleEntries.map((entry, idx) => {
+                          const Icon = entry.Icon;
+                          const courseObj = state.courses[entry.id as keyof typeof state.courses];
+                          const liveTitle =
+                            courseObj?.heroTitle?.replace(/\s*Interview Prep$/i, '').trim() ||
+                            entry.defaultLabel;
+                          return (
+                            <div
+                              key={entry.id}
+                              className="flex items-center justify-between gap-1 rounded-xl px-2.5 py-1.5 transition hover:bg-[#F3ECFF]"
+                            >
+                              <Link
+                                href={`/courses/${entry.id}`}
+                                onClick={() => setFlyout(null)}
+                                className="flex min-w-0 flex-1 items-center gap-2.5 py-0.5 text-[13px] font-medium text-[#2E2E3A] hover:text-[#6E32F5]"
+                              >
+                                <Icon className="h-4 w-4 shrink-0 text-[#848494]" />
+                                <span className="truncate">{liveTitle}</span>
+                              </Link>
+                              {coursesEditMode && (
+                                <div className="flex shrink-0 items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    disabled={idx === 0}
+                                    onClick={() => moveCourse(idx, -1)}
+                                    className="rounded p-1 text-[#848494] hover:bg-white hover:text-[#6E32F5] disabled:opacity-30"
+                                    title="上移"
+                                  >
+                                    <ArrowUp className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={idx === visibleEntries.length - 1}
+                                    onClick={() => moveCourse(idx, 1)}
+                                    className="rounded p-1 text-[#848494] hover:bg-white hover:text-[#6E32F5] disabled:opacity-30"
+                                    title="下移"
+                                  >
+                                    <ArrowDown className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => hideCourse(entry.id)}
+                                    className="rounded p-1 text-[#848494] hover:bg-white hover:text-rose-600"
+                                    title="隐藏/移除课程"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {coursesEditMode && hiddenSet.size > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => updateCourseNav(orderedEntries.map((e) => e.id), [])}
+                            className="mt-1 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-[#D4C5FD] py-1 text-[11px] font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                            恢复已隐藏课程 ({hiddenSet.size})
+                          </button>
                         )}
-                      </Link>
+                      </>
                     );
-                  })}
-                  {flyout === 'courses' && (
-                    <Link
-                      href="/courses/self-intro"
-                      onClick={() => setFlyout(null)}
-                      className="flex items-center justify-between rounded-xl px-2.5 py-2 text-[13px] font-medium text-[#2E2E3A] transition hover:bg-[#F3ECFF] hover:text-[#6E32F5]"
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <Sparkles className="h-4 w-4 text-[#6E32F5]" />
-                        <span>Self Intro &amp; Company Culture Fit</span>
-                      </span>
-                      <span className="rounded-full bg-[#F3ECFF] px-2 py-0.5 text-[10px] font-semibold text-[#6E32F5]">
-                        2026
-                      </span>
-                    </Link>
-                  )}
+                  })()}
                 </div>
                 <div className="mt-2 border-t border-[#ECECF2] pt-2">
                   <Link

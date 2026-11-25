@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import { QuestionModal } from '@/components/QuestionModal';
+import { RichAnswerEditor } from '@/components/RichAnswerEditor';
 import { TypographyPicker } from '@/components/TypographyPicker';
 import { VideoPlayer } from '@/components/VideoPlayer';
 import { VoiceCoachPanel } from '@/components/VoiceCoachPanel';
@@ -483,7 +484,7 @@ ${question.redFlags.map((r) => `- Avoid: ${r}`).join('\n')}`;
       {/* Main Study Studio Grid */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Left 8 cols: Video + Answer Studio + Custom Sub-Q/Video Blocks */}
-        <div className="space-y-6 lg:col-span-8">
+        <div className="space-y-6 lg:col-span-9">
           {/* 1. Primary Video Walkthrough / Self-Recording */}
           <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-[0_1px_2px_rgba(16,16,24,0.03)]">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -611,9 +612,13 @@ ${question.redFlags.map((r) => `- Avoid: ${r}`).join('\n')}`;
                   onClick={() => {
                     updateQuestionNotes(question.id, {
                       myAnswer: notes.myAnswer,
+                      myAnswerHtml: notes.myAnswerHtml,
                       modelAnswer: notes.modelAnswer,
+                      modelAnswerHtml: notes.modelAnswerHtml,
                       pitch60s: notes.pitch60s,
+                      pitch60sHtml: notes.pitch60sHtml,
                       personalNotes: notes.personalNotes,
+                      personalNotesHtml: notes.personalNotesHtml,
                     });
                     setAnswerSaved(true);
                     window.setTimeout(() => setAnswerSaved(false), 2000);
@@ -645,24 +650,23 @@ ${question.redFlags.map((r) => `- Avoid: ${r}`).join('\n')}`;
                   <div className="mb-2 flex items-center justify-between text-xs text-[#848494]">
                     <span className="flex items-center gap-1.5">
                       <FileText className="h-3.5 w-3.5" />
-                      Your personal answer (auto-saved)
+                      选中任意文字可单独调字体、字号与高亮颜色（自动保存）
                     </span>
                     <span className="font-mono">
                       Est. speaking time: {estimateSpeakingTime(notes.myAnswer)}
                     </span>
                   </div>
-                  <textarea
-                    rows={12}
-                    style={getTypographyStyle(answerStyle)}
-                    value={notes.myAnswer}
-                    onChange={(e) =>
-                      updateQuestionNotes(question.id, { myAnswer: e.target.value })
+                  <RichAnswerEditor
+                    htmlValue={notes.myAnswerHtml}
+                    textValue={notes.myAnswer}
+                    minHeightClass="min-h-[300px]"
+                    placeholder="1. Clarifying assumptions..."
+                    onChange={({ html, text }) =>
+                      updateQuestionNotes(question.id, {
+                        myAnswer: text,
+                        myAnswerHtml: html,
+                      })
                     }
-                    placeholder="1. Clarifying assumptions...\n2. Architecture / MECE pillars...\n3. Quantified metrics & trade-offs..."
-                    className={`w-full rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-4 text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none ${getTypographyClasses(
-                      answerStyle,
-                      'body'
-                    )}`}
                   />
                 </div>
               )}
@@ -670,23 +674,22 @@ ${question.redFlags.map((r) => `- Avoid: ${r}`).join('\n')}`;
               {activeTab === 'model' && (
                 <div>
                   <div className="mb-2 flex items-center justify-between text-xs text-[#848494]">
-                    <span>Editable reference answer (auto-saved)</span>
+                    <span>选中任意文字可单独设置字体、字号与重点颜色（自动保存）</span>
                     <span className="font-mono">
                       Est. speaking time: {estimateSpeakingTime(notes.modelAnswer)}
                     </span>
                   </div>
-                  <textarea
-                    rows={15}
-                    style={getTypographyStyle(answerStyle)}
-                    value={notes.modelAnswer}
-                    onChange={(e) =>
-                      updateQuestionNotes(question.id, { modelAnswer: e.target.value })
-                    }
+                  <RichAnswerEditor
+                    htmlValue={notes.modelAnswerHtml}
+                    textValue={notes.modelAnswer}
+                    minHeightClass="min-h-[380px]"
                     placeholder="Click 'Generate Model Answer' above or write your own..."
-                    className={`w-full resize-y rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-4 text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none ${getTypographyClasses(
-                      answerStyle,
-                      'body'
-                    )}`}
+                    onChange={({ html, text }) =>
+                      updateQuestionNotes(question.id, {
+                        modelAnswer: text,
+                        modelAnswerHtml: html,
+                      })
+                    }
                   />
                 </div>
               )}
@@ -699,35 +702,33 @@ ${question.redFlags.map((r) => `- Avoid: ${r}`).join('\n')}`;
                       Est. speaking time: {estimateSpeakingTime(notes.pitch60s)}
                     </span>
                   </div>
-                  <textarea
-                    rows={7}
-                    style={getTypographyStyle(answerStyle)}
-                    value={notes.pitch60s}
-                    onChange={(e) =>
-                      updateQuestionNotes(question.id, { pitch60s: e.target.value })
+                  <RichAnswerEditor
+                    htmlValue={notes.pitch60sHtml}
+                    textValue={notes.pitch60s}
+                    minHeightClass="min-h-[220px]"
+                    placeholder="Headline recommendation in sentence 1 -> 3 quantified pillars..."
+                    onChange={({ html, text }) =>
+                      updateQuestionNotes(question.id, {
+                        pitch60s: text,
+                        pitch60sHtml: html,
+                      })
                     }
-                    placeholder="Headline recommendation in sentence 1 -> 3 quantified pillars -> top risk mitigation..."
-                    className={`w-full rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-4 text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none ${getTypographyClasses(
-                      answerStyle,
-                      'body'
-                    )}`}
                   />
                 </div>
               )}
 
               {activeTab === 'notes' && (
-                <textarea
-                  rows={9}
-                  style={getTypographyStyle(answerStyle)}
-                  value={notes.personalNotes}
-                  onChange={(e) =>
-                    updateQuestionNotes(question.id, { personalNotes: e.target.value })
-                  }
+                <RichAnswerEditor
+                  htmlValue={notes.personalNotesHtml}
+                  textValue={notes.personalNotes}
+                  minHeightClass="min-h-[260px]"
                   placeholder="Personal debrief notes, company twists, or interviewer follow-ups..."
-                  className={`w-full rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-4 text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none ${getTypographyClasses(
-                    answerStyle,
-                    'body'
-                  )}`}
+                  onChange={({ html, text }) =>
+                    updateQuestionNotes(question.id, {
+                      personalNotes: text,
+                      personalNotesHtml: html,
+                    })
+                  }
                 />
               )}
             </div>
@@ -936,7 +937,7 @@ ${question.redFlags.map((r) => `- Avoid: ${r}`).join('\n')}`;
         </div>
 
         {/* Right 4 cols: Framework Checklist + Signals + Probes */}
-        <aside className="space-y-4 lg:col-span-4">
+        <aside className="space-y-4 lg:col-span-3">
           <div className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-[0_1px_2px_rgba(16,16,24,0.03)]">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-[#525260]">
               Framework Steps Checklist

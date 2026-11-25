@@ -30,6 +30,7 @@ import {
   LarkSettings,
   LibraryItem,
   PracticeSession,
+  QuestionCategoryDef,
   QuestionProgress,
   QuestionUserNotes,
   ResumeProfile,
@@ -111,6 +112,8 @@ interface AppContextValue {
   importHtmlPageToCourse: (pageId: string, track: CourseTrackId) => void;
   syncAllHtmlPagesToCourse: (track: CourseTrackId) => void;
   syncThemeFromHtml: (tokens: HtmlDesignTokens | null) => void;
+  updateCustomCategories: (categories: QuestionCategoryDef[]) => void;
+  updateCourseNav: (order: string[], hidden: string[]) => void;
   updateGoogleCalendarUrl: (url: string) => void;
   exportBackup: () => string;
   importBackup: (jsonText: string) => boolean;
@@ -1175,6 +1178,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.syncedTheme]);
 
+  const updateCustomCategories = useCallback(
+    (categories: QuestionCategoryDef[]) => {
+      commit((prev) => ({
+        ...prev,
+        customCategories: categories,
+      }));
+    },
+    [commit]
+  );
+
+  const updateCourseNav = useCallback(
+    (order: string[], hidden: string[]) => {
+      commit((prev) => ({
+        ...prev,
+        courseNavOrder: order,
+        hiddenCourseTracks: hidden,
+      }));
+    },
+    [commit]
+  );
+
   const updateGoogleCalendarUrl = useCallback(
     (url: string) => {
       commit((prev) => ({
@@ -1258,6 +1282,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         importHtmlPageToCourse,
         syncAllHtmlPagesToCourse,
         syncThemeFromHtml,
+        updateCustomCategories,
+        updateCourseNav,
         updateGoogleCalendarUrl,
         exportBackup,
         importBackup,

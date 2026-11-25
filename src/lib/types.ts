@@ -25,15 +25,14 @@ export type RoundType =
 
 export type Difficulty = 'core' | 'senior' | 'staff';
 
-export type QuestionCategory =
-  | 'intro-culture'
-  | 'success-stories'
-  | 'fail-stories'
-  | 'xfn'
-  | 'metrics'
-  | 'product-ai'
-  | 'system-tech'
-  | 'strategy-case';
+export type QuestionCategory = string;
+
+export interface QuestionCategoryDef {
+  id: string;
+  label: string;
+  shortLabel: string;
+  badgeClass: string;
+}
 
 export type QuestionStatus = 'unpracticed' | 'needs_drill' | 'mastered';
 
@@ -244,6 +243,10 @@ export interface QuestionUserNotes {
   modelAnswer: string;
   pitch60s: string;
   personalNotes: string;
+  myAnswerHtml?: string;
+  modelAnswerHtml?: string;
+  pitch60sHtml?: string;
+  personalNotesHtml?: string;
   videoUrl: string;
   localMediaId?: string;
   localMediaName?: string;
@@ -531,6 +534,9 @@ export interface AppState {
   resumeProfiles: ResumeProfile[];
   deployedHtmlPages?: DeployedHtmlPage[];
   syncedTheme?: HtmlDesignTokens | null;
+  customCategories?: QuestionCategoryDef[];
+  courseNavOrder?: string[];
+  hiddenCourseTracks?: string[];
   googleCalendarIcsUrl?: string;
   lastCustomLoop: CustomLoopPlan | null;
 }

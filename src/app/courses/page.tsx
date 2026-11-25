@@ -18,7 +18,7 @@ export default function CoursesDirectoryPage() {
         <div>
           <div className="inline-flex items-center gap-1.5 rounded-full bg-[#F3ECFF] px-3 py-1 text-[11px] font-semibold text-[#6E32F5]">
             <Sparkles className="h-3.5 w-3.5" />
-            2026 PERSONAL CURRICULUM · 8 TRACKS
+            PERSONAL CURRICULUM
           </div>
           <h1 className="mt-2.5 text-2xl font-bold tracking-tight text-[#111118] sm:text-3xl">
             Interview Courses &amp; Structured Guides
@@ -72,9 +72,6 @@ export default function CoursesDirectoryPage() {
                     className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${role.badgeClass}`}
                   >
                     {role.shortLabel}
-                  </span>
-                  <span className="rounded-full bg-[#F3ECFF] px-2.5 py-0.5 text-[10px] font-bold text-[#6E32F5]">
-                    {course?.editionBadge || '2026 EDITION'}
                   </span>
                 </div>
 
