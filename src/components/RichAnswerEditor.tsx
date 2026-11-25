@@ -19,10 +19,11 @@ const FONT_OPTIONS = [
 ];
 
 const SIZE_OPTIONS = [
-  { label: '小', size: '13px', execSize: '2' },
-  { label: '中', size: '15px', execSize: '3' },
-  { label: '大', size: '18px', execSize: '4' },
-  { label: '特大', size: '22px', execSize: '5' },
+  { label: '18px', size: '18px', execSize: '2' },
+  { label: '22px', size: '22px', execSize: '3' },
+  { label: '26px', size: '26px', execSize: '4' },
+  { label: '30px', size: '30px', execSize: '5' },
+  { label: '36px', size: '36px', execSize: '6' },
 ];
 
 const COLOR_SWATCHES = [
@@ -224,7 +225,7 @@ export function RichAnswerEditor({
         onInput={emitUpdate}
         data-placeholder={placeholder}
         data-testid="rich-answer-editable"
-        className={`${minHeightClass} w-full overflow-y-auto p-5 text-[15px] leading-relaxed text-[#111118] focus:outline-none [&>p]:mb-2.5`}
+        className={`${minHeightClass} w-full overflow-y-auto p-5 text-[18px] leading-relaxed text-[#111118] focus:outline-none [&>p]:mb-2.5`}
       />
     </div>
   );
