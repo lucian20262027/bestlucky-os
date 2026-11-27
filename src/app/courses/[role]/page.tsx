@@ -1016,15 +1016,15 @@ function CourseSyllabusContent() {
                       <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-[#848494]">
                         <span className="inline-flex items-center gap-1">
                           <LayoutGrid className="h-3.5 w-3.5" />
-                          {mod.subSections.length} sections
+                          {mod.subSections.length} {mod.subSections.length === 1 ? 'section' : 'sections'}
                         </span>
                         <span className="inline-flex items-center gap-1">
                           <BookOpen className="h-3.5 w-3.5" />
-                          {modLessonCount} lessons
+                          {modLessonCount} {modLessonCount === 1 ? 'lesson' : 'lessons'}
                         </span>
                         <span className="inline-flex items-center gap-1">
                           <Video className="h-3.5 w-3.5" />
-                          {modVideoCount} videos
+                          {modVideoCount} {modVideoCount === 1 ? 'video' : 'videos'}
                         </span>
                       </div>
                       {mod.description && (
@@ -1212,8 +1212,8 @@ function CourseSyllabusContent() {
                               </span>
                             </button>
                             <span className="text-xs text-[#848494]">
-                              {sub.lessons.length} lessons
-                              {subVideos > 0 ? ` · ${subVideos} videos` : ''}
+                              {sub.lessons.length} {sub.lessons.length === 1 ? 'lesson' : 'lessons'}
+                              {subVideos > 0 ? ` · ${subVideos} ${subVideos === 1 ? 'video' : 'videos'}` : ''}
                             </span>
                           </>
                         )}

@@ -103,14 +103,14 @@ function PracticeLauncherContent() {
             Interview Practice &amp; AI Voice Coach
           </h1>
           <p className="mt-1 text-sm text-[var(--ink-secondary)]">
-            支持实时英文语音开口练习、AI 结构/语速/高级词润色，以及 7 大岗位分屏计时 Mock Room。
+            Real-time spoken English practice with AI structure, pacing &amp; executive polish, plus timed 7-role Mock Rooms.
           </p>
         </div>
 
         <button
           type="button"
           onClick={launchRandomPriority}
-          className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:opacity-95"
+          className="inline-flex items-center gap-2 rounded-xl bg-[#111118] px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#6E32F5]"
         >
           <Shuffle className="h-4 w-4" />
           Random High-Priority Drill
@@ -124,20 +124,20 @@ function PracticeLauncherContent() {
           onClick={() => setActiveTab('voice')}
           className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
             activeTab === 'voice'
-              ? 'bg-[#6E32F5] text-white shadow-xs'
+              ? 'bg-[#111118] text-white shadow-xs'
               : 'text-[#5E5E6E] hover:bg-[#F7F7FA] hover:text-[#111118]'
           }`}
         >
           <Mic className="h-3.5 w-3.5" />
-          AI 语音开口教练
+          AI Voice Coach
           <span
             className={`rounded-md px-1.5 py-0.5 text-[10px] ${
               activeTab === 'voice'
                 ? 'bg-white/20 text-white'
-                : 'bg-[#F3ECFF] text-[#6E32F5]'
+                : 'bg-[#F5F3FF] text-[#6E32F5]'
             }`}
           >
-            Voice + 润色
+            Live Polish
           </span>
         </button>
         <button
@@ -145,24 +145,24 @@ function PracticeLauncherContent() {
           onClick={() => setActiveTab('mock')}
           className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
             activeTab === 'mock'
-              ? 'bg-[#6E32F5] text-white shadow-xs'
+              ? 'bg-[#111118] text-white shadow-xs'
               : 'text-[#5E5E6E] hover:bg-[#F7F7FA] hover:text-[#111118]'
           }`}
         >
           <Layers className="h-3.5 w-3.5" />
-          Mock Room 题库模拟 ({allQuestions.length})
+          Mock Room ({allQuestions.length})
         </button>
         <button
           type="button"
           onClick={() => setActiveTab('history')}
           className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
             activeTab === 'history'
-              ? 'bg-[#6E32F5] text-white shadow-xs'
+              ? 'bg-[#111118] text-white shadow-xs'
               : 'text-[#5E5E6E] hover:bg-[#F7F7FA] hover:text-[#111118]'
           }`}
         >
           <History className="h-3.5 w-3.5" />
-          练习记录 ({state.sessions.length})
+          Session History ({state.sessions.length})
         </button>
       </div>
 

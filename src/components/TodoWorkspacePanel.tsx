@@ -10,7 +10,6 @@ import {
   Square,
   Trash2,
 } from 'lucide-react';
-import { roleBadgeClasses } from '@/lib/helpers';
 import { ROLE_LIST, ROLES_BY_ID } from '@/lib/roles';
 import { RoleTrack, TodoItem, TodoPriority } from '@/lib/types';
 
@@ -28,27 +27,31 @@ type FilterTab = 'all' | 'today' | 'high' | 'deferred' | 'done';
 
 const PRIORITY_META: Record<
   TodoPriority,
-  { label: string; rank: number; pillClass: string }
+  { label: string; rank: number; dotClass: string; pillClass: string }
 > = {
   urgent: {
     label: 'Urgent',
     rank: 0,
-    pillClass: 'border-rose-200 bg-rose-50 text-rose-700',
+    dotClass: 'bg-rose-500',
+    pillClass: 'border-rose-200 bg-rose-50/70 text-rose-700',
   },
   p0: {
     label: 'P0',
     rank: 1,
-    pillClass: 'border-amber-200 bg-amber-50 text-amber-800',
+    dotClass: 'bg-amber-500',
+    pillClass: 'border-amber-200 bg-amber-50/70 text-amber-800',
   },
   p1: {
     label: 'P1',
     rank: 2,
-    pillClass: 'border-[#D8C8FE] bg-[#F3ECFF] text-[#6E32F5]',
+    dotClass: 'bg-[#6E32F5]',
+    pillClass: 'border-[#E5DAFE] bg-[#F8F5FF] text-[#6E32F5]',
   },
   p2: {
     label: 'P2',
     rank: 3,
-    pillClass: 'border-[#ECECF2] bg-[#FAFAFC] text-[#5E5E6E]',
+    dotClass: 'bg-slate-400',
+    pillClass: 'border-[#E5E7EB] bg-[#FAFAFC] text-[#5E5E6E]',
   },
 };
 
@@ -157,21 +160,21 @@ export function TodoWorkspacePanel({
       {/* Header + Filter Pills */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#F2F2F7] pb-4">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#F3ECFF] text-[#6E32F5]">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#F5F3FF] text-[#6E32F5]">
             <CheckSquare className="h-4 w-4" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-[#111118]">Lucky To-Do</h2>
+              <h2 className="text-sm font-semibold text-[#111118]">Prep Action Queue</h2>
               <span
                 suppressHydrationWarning
-                className="rounded-full bg-[#F3ECFF] px-2.5 py-0.5 text-[11px] font-semibold text-[#6E32F5]"
+                className="rounded-full border border-[#ECECF2] bg-[#FAFAFC] px-2 py-0.5 font-mono text-[10.5px] font-medium text-[#5E5E6E]"
               >
                 {mounted ? `${completedCount}/${todos.length} done` : '0/0 done'}
               </span>
             </div>
             <p className="text-[11px] text-[#848494]">
-              按优先级（Urgent / P0 / P1 / P2）自动排序，支持一键 Defer 顺延到明天或下周
+              Auto-sorted by priority with one-click schedule deferrals
             </p>
           </div>
         </div>
@@ -183,17 +186,17 @@ export function TodoWorkspacePanel({
               { id: 'today', label: 'Today' },
               { id: 'high', label: 'Urgent & P0' },
               { id: 'deferred', label: 'Deferred' },
-              { id: 'done', label: 'Completed' },
+              { id: 'done', label: 'Done' },
             ] as Array<{ id: FilterTab; label: string }>
           ).map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setFilterTab(tab.id)}
-              className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+              className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
                 filterTab === tab.id
-                  ? 'bg-white text-[#6E32F5] shadow-2xs'
-                  : 'text-[#5E5E6E] hover:text-[#111118]'
+                  ? 'bg-white font-semibold text-[#111118] shadow-2xs'
+                  : 'text-[#6B7280] hover:text-[#111118]'
               }`}
             >
               {tab.label}
@@ -205,79 +208,81 @@ export function TodoWorkspacePanel({
       {/* Add Task Composer Bar */}
       <form
         onSubmit={handleSubmit}
-        className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-2.5 focus-within:border-[#6E32F5]/50 focus-within:bg-white"
+        className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-2 focus-within:border-[#6E32F5]/50 focus-within:bg-white"
       >
         <input
           ref={inputRef}
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Add a prep task (e.g. Record 2-min intro for OpenAI FDE, press Enter or click + Add)..."
-          className="min-w-[220px] flex-1 bg-transparent px-2 py-1 text-sm text-[#111118] placeholder-[#9E9EAE] focus:outline-none"
+          placeholder="Add a prep task — press Enter to save..."
+          className="min-w-[180px] flex-1 bg-transparent px-2.5 py-1.5 text-sm text-[#111118] placeholder-[#9CA3AF] focus:outline-none"
         />
 
-        <select
-          value={priority}
-          onChange={(e) => setPriority(e.target.value as TodoPriority)}
-          aria-label="Task priority"
-          className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#111188] focus:border-[#6E32F5] focus:outline-none"
-        >
-          <option value="urgent">🔥 Urgent</option>
-          <option value="p0">P0 · High</option>
-          <option value="p1">P1 · Normal</option>
-          <option value="p2">P2 · Low</option>
-        </select>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <select
+            value={priority}
+            onChange={(e) => setPriority(e.target.value as TodoPriority)}
+            aria-label="Task priority"
+            className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs font-medium text-[#111118] focus:border-[#6E32F5] focus:outline-none"
+          >
+            <option value="urgent">Urgent</option>
+            <option value="p0">P0 · High</option>
+            <option value="p1">P1 · Normal</option>
+            <option value="p2">P2 · Low</option>
+          </select>
 
-        <select
-          value={role}
-          onChange={(e) => setRole(e.target.value as RoleTrack)}
-          aria-label="Role track"
-          className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs font-medium text-[#111118] focus:border-[#6E32F5] focus:outline-none"
-        >
-          {ROLE_LIST.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.shortLabel}
-            </option>
-          ))}
-        </select>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as RoleTrack)}
+            aria-label="Role track"
+            className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs font-medium text-[#111118] focus:border-[#6E32F5] focus:outline-none"
+          >
+            {ROLE_LIST.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.shortLabel}
+              </option>
+            ))}
+          </select>
 
-        <select
-          value={dueOption}
-          onChange={(e) =>
-            setDueOption(e.target.value as 'today' | 'tomorrow' | 'next-week' | 'custom')
-          }
-          aria-label="Schedule due"
-          className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs font-medium text-[#5E5E6E] focus:border-[#6E32F5] focus:outline-none"
-        >
-          <option value="today">Today</option>
-          <option value="tomorrow">Tomorrow</option>
-          <option value="next-week">Next Week</option>
-          <option value="custom">Pick Date...</option>
-        </select>
+          <select
+            value={dueOption}
+            onChange={(e) =>
+              setDueOption(e.target.value as 'today' | 'tomorrow' | 'next-week' | 'custom')
+            }
+            aria-label="Schedule due"
+            className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs font-medium text-[#5E5E6E] focus:border-[#6E32F5] focus:outline-none"
+          >
+            <option value="today">Today</option>
+            <option value="tomorrow">Tomorrow</option>
+            <option value="next-week">Next Week</option>
+            <option value="custom">Pick Date...</option>
+          </select>
 
-        {dueOption === 'custom' && (
-          <input
-            type="date"
-            value={customDate}
-            onChange={(e) => setCustomDate(e.target.value)}
-            className="rounded-lg border border-[#ECECF2] bg-white px-2 py-1 text-xs"
-          />
-        )}
+          {dueOption === 'custom' && (
+            <input
+              type="date"
+              value={customDate}
+              onChange={(e) => setCustomDate(e.target.value)}
+              className="rounded-lg border border-[#ECECF2] bg-white px-2 py-1 text-xs"
+            />
+          )}
 
-        <button
-          type="submit"
-          className="inline-flex items-center gap-1.5 rounded-xl bg-[#6E32F5] px-4 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-[#5B24D6]"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add
-        </button>
+          <button
+            type="submit"
+            className="inline-flex items-center gap-1 rounded-lg bg-[#111118] px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[#6E32F5]"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add
+          </button>
+        </div>
       </form>
 
       {/* Task Rows */}
       <div className="mt-3 divide-y divide-[#F2F2F7]">
         {sortedAndFiltered.length === 0 ? (
           <div className="py-8 text-center text-xs text-[#848494]">
-            当前筛选下暂无任务，在上方输入任务名称后点击 <strong>+ Add</strong> 即可添加。
+            No tasks match this filter. Type above and press Enter to add one.
           </div>
         ) : (
           sortedAndFiltered.map((todo) => {
@@ -291,21 +296,20 @@ export function TodoWorkspacePanel({
                 key={todo.id}
                 className="group flex flex-wrap items-center justify-between gap-3 py-3 transition hover:bg-[#FAFAFC]/70"
               >
-                {/* Left: Checkbox + Title */}
                 <button
                   type="button"
                   onClick={() => onToggleTodo(todo.id)}
-                  className="flex min-w-[220px] flex-1 items-center gap-3 text-left"
+                  className="flex min-w-[200px] flex-1 items-center gap-3 text-left"
                 >
                   {todo.completed ? (
                     <Check className="h-4 w-4 shrink-0 rounded bg-[#6E32F5] p-0.5 text-white" />
                   ) : (
-                    <Square className="h-4 w-4 shrink-0 text-[#9E9EAE] transition group-hover:text-[#6E32F5]" />
+                    <Square className="h-4 w-4 shrink-0 text-[#9CA3AF] transition group-hover:text-[#6E32F5]" />
                   )}
                   <span
                     className={`text-sm ${
                       todo.completed
-                        ? 'text-[#9E9EAE] line-through'
+                        ? 'text-[#9CA3AF] line-through'
                         : 'font-medium text-[#111118]'
                     }`}
                   >
@@ -313,49 +317,45 @@ export function TodoWorkspacePanel({
                   </span>
                 </button>
 
-                {/* Right: Inline Priority, Role, Defer Control, Delete */}
                 <div className="flex flex-wrap items-center gap-2">
-                  {/* Inline Priority Switcher */}
-                  <select
-                    value={p}
-                    onChange={(e) =>
-                      onUpdateTodo(todo.id, { priority: e.target.value as TodoPriority })
-                    }
-                    aria-label="Change priority"
-                    className={`cursor-pointer rounded-md border px-2 py-0.5 text-[11px] font-semibold focus:outline-none ${pMeta.pillClass}`}
-                  >
-                    <option value="urgent">Urgent</option>
-                    <option value="p0">P0</option>
-                    <option value="p1">P1</option>
-                    <option value="p2">P2</option>
-                  </select>
+                  <div className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${pMeta.pillClass}`}>
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${pMeta.dotClass}`} />
+                    <select
+                      value={p}
+                      onChange={(e) =>
+                        onUpdateTodo(todo.id, { priority: e.target.value as TodoPriority })
+                      }
+                      aria-label="Change priority"
+                      className="cursor-pointer bg-transparent font-semibold focus:outline-none"
+                    >
+                      <option value="urgent">Urgent</option>
+                      <option value="p0">P0</option>
+                      <option value="p1">P1</option>
+                      <option value="p2">P2</option>
+                    </select>
+                  </div>
 
                   {p === 'urgent' && !todo.completed && (
-                    <AlertCircle className="h-3.5 w-3.5 text-rose-500" />
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0 text-rose-500" />
                   )}
 
-                  {/* Role Badge */}
                   {todo.role && (
-                    <span
-                      className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${roleBadgeClasses(
-                        todo.role
-                      )}`}
-                    >
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-[#ECECF2] bg-[#FAFAFC] px-2 py-0.5 text-[10.5px] font-medium text-[#525260]">
                       {ROLES_BY_ID[todo.role]?.shortLabel ?? todo.role}
                     </span>
                   )}
 
-                  {/* Inline Defer Control */}
-                  <div className="inline-flex items-center gap-1 rounded-md border border-[#ECECF2] bg-[#FAFAFC] px-2 py-0.5 text-[11px]">
-                    <CalendarClock className="h-3 w-3 text-[#848494]" />
+                  {/* Clean non-overlapping Schedule / Defer Control */}
+                  <div className="inline-flex items-center gap-1.5 rounded-md border border-[#ECECF2] bg-[#FAFAFC] px-2.5 py-0.5 text-[11px]">
+                    <CalendarClock className="h-3 w-3 shrink-0 text-[#848494]" />
                     <select
                       value=""
                       onChange={(e) => {
                         if (e.target.value) handleDefer(todo, e.target.value);
                       }}
                       aria-label="Defer task"
-                      className={`cursor-pointer bg-transparent font-medium focus:outline-none ${
-                        isDeferred ? 'text-[#6E32F5]' : 'text-[#5E5E6E]'
+                      className={`cursor-pointer bg-transparent pl-0.5 pr-1 font-medium focus:outline-none ${
+                        isDeferred ? 'text-[#6E32F5]' : 'text-[#525260]'
                       }`}
                     >
                       <option value="">{dueDisplay}</option>
@@ -370,6 +370,7 @@ export function TodoWorkspacePanel({
                     onClick={() => onDeleteTodo(todo.id)}
                     className="rounded-md p-1 text-[#B4B4C2] transition hover:bg-rose-50 hover:text-rose-600"
                     title="Delete task"
+                    aria-label="Delete task"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>

@@ -7,6 +7,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  Lock,
   RotateCcw,
   Sparkles,
   Upload,
@@ -14,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from './AppProvider';
+import { getSavedPasscode, setSavedPasscode } from './WorkspaceLockGate';
 import { GeminiModelChoice, LanguageMode } from '@/lib/types';
 
 export function SettingsModal() {
@@ -28,11 +30,17 @@ export function SettingsModal() {
   } = useApp();
 
   const [showKey, setShowKey] = useState(false);
+  const [passcodeDraft, setPasscodeDraft] = useState('');
+  const [hasPasscode, setHasPasscode] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!settingsOpen) return;
+    const saved = getSavedPasscode();
+    setPasscodeDraft(saved);
+    setHasPasscode(Boolean(saved));
+    setStatusMsg(null);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSettingsOpen(false);
     };
@@ -50,7 +58,7 @@ export function SettingsModal() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `loopos-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `bestlucky-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
     setStatusMsg('Backup JSON downloaded.');
@@ -61,20 +69,34 @@ export function SettingsModal() {
     if (!file) return;
     const text = await file.text();
     const ok = importBackup(text);
-    setStatusMsg(ok ? 'Workspace restored from backup!' : 'Invalid backup JSON file.');
+    setStatusMsg(ok ? 'Workspace restored from backup.' : 'Invalid backup JSON file.');
     e.target.value = '';
   };
 
+  const handleSavePasscode = () => {
+    const clean = passcodeDraft.trim();
+    setSavedPasscode(clean);
+    setHasPasscode(Boolean(clean));
+    window.dispatchEvent(new Event('bestlucky-passcode-updated'));
+    setStatusMsg(clean ? 'Workspace privacy passcode enabled.' : 'Workspace privacy passcode cleared.');
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-[2px]">
-      <div className="w-full max-w-xl rounded-2xl border border-[var(--border)] bg-white shadow-xl">
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
+      onClick={() => setSettingsOpen(false)}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-xl rounded-2xl border border-[var(--border)] bg-white shadow-xl"
+      >
         <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-4">
           <div>
             <h2 className="text-base font-semibold text-[var(--ink-primary)]">
-              Workspace & AI Engine Settings
+              Workspace &amp; AI Engine Settings
             </h2>
             <p className="text-xs text-[var(--ink-muted)]">
-              配置 Gemini API、语言模式与云端/本地数据备份（自动同步至 Neon Postgres）
+              Configure Gemini API, privacy passcode, language, and JSON backups
             </p>
           </div>
           <button
@@ -115,7 +137,7 @@ export function SettingsModal() {
                 <p className="mt-1 text-xs leading-relaxed text-[var(--ink-secondary)]">
                   {hasKey
                     ? 'Your requests use the Gemini Interactions API for dynamic follow-ups, rubric scoring, and JD tailoring.'
-                    : 'Works out-of-the-box without an API key! Add a Gemini API key below (or in .env.local) anytime to upgrade to live Gemini 4 coaching.'}
+                    : 'Works out-of-the-box without an API key. Add a Gemini API key below anytime to upgrade to live Gemini 4 coaching.'}
                 </p>
               </div>
             </div>
@@ -152,6 +174,46 @@ export function SettingsModal() {
                   Clear
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* Workspace Privacy Lock */}
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--canvas)] p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Lock className="h-3.5 w-3.5 text-[#6E32F5]" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-[var(--ink-secondary)]">
+                  Workspace Privacy Passcode
+                </span>
+              </div>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                  hasPasscode
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                {hasPasscode ? 'Enabled' : 'Not Set'}
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] text-[var(--ink-muted)]">
+              Protect personal job pipelines, resumes, and notes behind a browser session lock.
+            </p>
+            <div className="mt-2.5 flex items-center gap-2">
+              <input
+                type="password"
+                value={passcodeDraft}
+                onChange={(e) => setPasscodeDraft(e.target.value)}
+                placeholder="Set passcode (leave blank to disable)"
+                className="flex-1 rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 font-mono text-xs text-[var(--ink-primary)] focus:border-[var(--accent)] focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleSavePasscode}
+                className="rounded-lg bg-[#111118] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#6E32F5]"
+              >
+                {passcodeDraft.trim() ? 'Save Lock' : 'Disable'}
+              </button>
             </div>
           </div>
 
@@ -252,7 +314,7 @@ export function SettingsModal() {
           {/* Backup & Reset */}
           <div className="border-t border-[var(--border)] pt-4">
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--ink-secondary)]">
-              Local Data Management (Sessions, Stories, Custom Loops)
+              Local Data Management
             </label>
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
               <button

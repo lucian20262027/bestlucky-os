@@ -121,9 +121,12 @@ export default function DeployedHtmlPagesIndex() {
           <h2 className="mt-3 text-base font-semibold text-[#111118]">
             还没有已部署的 HTML 页面
           </h2>
-          <p className="mx-auto mt-1 max-w-md text-xs text-[#525260]">
-            你可以在全站任何文档上传按钮（Knowledge Hub、JD Study Plan、Job Pipeline、Lark 导入）上传
-            `.html` 文件并点击「一键部署」，或直接点击右上角上传。
+          <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-[#525260]">
+            Upload any{' '}
+            <code className="rounded bg-[#F5F3FF] px-1.5 py-0.5 font-mono text-[11px] text-[#6E32F5]">
+              .html
+            </code>{' '}
+            artifact from Knowledge Hub, JD Study Plan, or Job Pipeline, or upload directly above.
           </p>
         </div>
       ) : (
