@@ -61,16 +61,14 @@ import {
   RoleTrack,
 } from '@/lib/types';
 
-type FocusEditorTarget =
-  | { kind: 'module'; modId: string; title: string; value: string }
-  | {
-      kind: 'lesson';
-      modId: string;
-      subId: string;
-      lessonId: string;
-      title: string;
-      value: string;
-    };
+type FocusEditorTarget = {
+  modId: string;
+  subId: string;
+  lessonId: string;
+  title: string;
+  htmlValue?: string;
+  textValue: string;
+};
 
 function estimateSpeakingStats(text: string): {
   timeLabel: string;
@@ -119,8 +117,6 @@ function CourseSyllabusContent() {
   const [snapshotHtml, setSnapshotHtml] = useState<string | null>(null);
 
   // Read-mode inline editing states
-  const [editingModuleNotes, setEditingModuleNotes] = useState(false);
-  const [moduleNotesDraft, setModuleNotesDraft] = useState('');
   const [editingStandaloneLesson, setEditingStandaloneLesson] = useState(false);
   const [standaloneTitleDraft, setStandaloneTitleDraft] = useState('');
   const [standaloneContentDraft, setStandaloneContentDraft] = useState('');
@@ -242,7 +238,6 @@ function CourseSyllabusContent() {
     setSelectedLessonId(null);
     setEditingInlineArticle(false);
     setEditingStandaloneLesson(false);
-    setEditingModuleNotes(false);
     setInlineNotice('');
   }, [role]);
 
@@ -268,7 +263,6 @@ function CourseSyllabusContent() {
   useEffect(() => {
     setEditingInlineArticle(false);
     setEditingStandaloneLesson(false);
-    setEditingModuleNotes(false);
     setInlineNotice('');
   }, [activeLesson?.id]);
 
@@ -534,23 +528,6 @@ function CourseSyllabusContent() {
     setCollapsedSubs((prev) => ({ ...prev, [targetSub.id]: false }));
     setSelectedLessonId(newLesson.id);
     setQuickAddModalOpen(false);
-  };
-
-  const openModuleNotesEditor = () => {
-    if (!activeEntry) return;
-    setModuleNotesDraft(activeEntry.moduleDescription || '');
-    setEditingModuleNotes(true);
-  };
-
-  const handleSaveModuleNotes = () => {
-    if (!activeEntry) return;
-    saveCourse({
-      ...course,
-      modules: course.modules.map((m) =>
-        m.id === activeEntry.moduleId ? { ...m, description: moduleNotesDraft } : m
-      ),
-    });
-    setEditingModuleNotes(false);
   };
 
   const openStandaloneEditor = () => {
@@ -1535,95 +1512,6 @@ function CourseSyllabusContent() {
 
                 {/* Reader Body */}
                 <div className="space-y-5 p-6">
-                  {/* Module Overview / Script Block (ALWAYS visible when non-empty, and inline editable!) */}
-                  {(activeEntry.moduleDescription?.trim() || editingModuleNotes) && (
-                    <div className="rounded-xl border border-[#D8DCE8] bg-[#F6F7FB] p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-[#475467]">
-                          Module Notes &amp; Overview
-                        </span>
-                        {editingModuleNotes ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setEditingModuleNotes(false)}
-                              className="rounded-lg border border-[#CFD4E0] bg-white px-2.5 py-1 text-[11px] font-medium text-[#475467]"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleSaveModuleNotes}
-                              className="inline-flex items-center gap-1 rounded-lg bg-[#111118] px-3 py-1 text-[11px] font-semibold text-white"
-                            >
-                              <Save className="h-3 w-3" />
-                              Save Module Notes
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={openModuleNotesEditor}
-                            className="inline-flex items-center gap-1 rounded-lg border border-[#CFD4E0] bg-white px-2.5 py-1 text-[11px] font-medium text-[#344054] hover:border-[#6E32F5] hover:text-[#6E32F5]"
-                          >
-                            <Edit3 className="h-3 w-3" />
-                            Edit Module Notes
-                          </button>
-                        )}
-                      </div>
-
-                      {editingModuleNotes ? (
-                        <div className="mt-2.5 space-y-2">
-                          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#475467]">
-                            <span className="inline-flex items-center gap-1 font-mono font-medium">
-                              <Clock className="h-3 w-3 text-[#6E32F5]" />
-                              {estimateSpeakingStats(moduleNotesDraft).timeLabel} ·{' '}
-                              {estimateSpeakingStats(moduleNotesDraft).wordCount} words
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setFocusEditor({
-                                  kind: 'module',
-                                  modId: activeEntry.moduleId,
-                                  title: activeEntry.moduleTitle,
-                                  value: moduleNotesDraft,
-                                })
-                              }
-                              className="inline-flex items-center gap-1 rounded-lg border border-[#CFD4E0] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#5D26D9] hover:border-[#6E32F5]"
-                            >
-                              <Maximize2 className="h-3 w-3" />
-                              Expand Fullscreen
-                            </button>
-                          </div>
-                          <textarea
-                            value={moduleNotesDraft}
-                            onChange={(e) => setModuleNotesDraft(e.target.value)}
-                            placeholder="Module opening script, takeaways, or context..."
-                            className="min-h-[46vh] w-full resize-y rounded-xl border border-[#C5CBD9] bg-white p-4 text-[14px] leading-[1.75] text-[#111118] focus:border-[#6E32F5] focus:ring-2 focus:ring-[#6E32F5]/15 focus:outline-none"
-                          />
-                        </div>
-                      ) : (
-                        <p className="mt-2 whitespace-pre-wrap text-[13.5px] leading-relaxed text-[#1F2430]">
-                          {activeEntry.moduleDescription}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {!activeEntry.moduleDescription?.trim() && !editingModuleNotes && (
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={openModuleNotesEditor}
-                        className="inline-flex items-center gap-1 text-[11px] font-medium text-[#667085] hover:text-[#6E32F5]"
-                      >
-                        <Plus className="h-3 w-3" />
-                        Add Module Notes
-                      </button>
-                    </div>
-                  )}
-
                   {editingInlineArticle && activeHtmlPage && (
                     <div
                       className="space-y-2.5 rounded-xl border border-[#C5B3FB] bg-[#F7F4FF] p-3.5"
@@ -1852,12 +1740,12 @@ function CourseSyllabusContent() {
                               type="button"
                               onClick={() =>
                                 setFocusEditor({
-                                  kind: 'lesson',
                                   modId: activeEntry.moduleId,
                                   subId: activeEntry.subSectionId,
                                   lessonId: activeLesson.id,
                                   title: standaloneTitleDraft || activeLesson.title,
-                                  value: standaloneContentDraft,
+                                  htmlValue: standaloneHtmlDraft,
+                                  textValue: standaloneContentDraft,
                                 })
                               }
                               className="inline-flex items-center gap-1 rounded-lg border border-[#CFD4E0] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#5D26D9] hover:border-[#6E32F5]"
@@ -2164,34 +2052,11 @@ function CourseSyllabusContent() {
                       />
                     </div>
                     <div>
-                      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-                        <label className="text-[11px] font-semibold text-[#475467]">
-                          Module Overview &amp; Script (shown in course reader)
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center gap-1 font-mono text-[11px] font-medium text-[#475467]">
-                            <Clock className="h-3 w-3 text-[#6E32F5]" />
-                            {estimateSpeakingStats(mod.description || '').timeLabel} ·{' '}
-                            {estimateSpeakingStats(mod.description || '').wordCount} words
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setFocusEditor({
-                                kind: 'module',
-                                modId: mod.id,
-                                title: mod.title,
-                                value: mod.description || '',
-                              })
-                            }
-                            className="inline-flex items-center gap-1 rounded-lg border border-[#CFD4E0] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#5D26D9] hover:border-[#6E32F5]"
-                          >
-                            <Maximize2 className="h-3 w-3" />
-                            Expand Fullscreen
-                          </button>
-                        </div>
-                      </div>
+                      <label className="mb-1 block text-[11px] font-semibold text-[#475467]">
+                        Module Subtitle (Optional)
+                      </label>
                       <textarea
+                        rows={2}
                         value={mod.description}
                         onChange={(e) =>
                           saveCourse({
@@ -2201,8 +2066,8 @@ function CourseSyllabusContent() {
                             ),
                           })
                         }
-                        placeholder="Add module overview, framing notes, or opening script..."
-                        className="min-h-[45vh] w-full resize-y rounded-xl border border-[#C5CBD9] bg-white p-4 text-[14px] leading-[1.75] text-[#111118] placeholder:text-[#848B9C] focus:border-[#6E32F5] focus:ring-2 focus:ring-[#6E32F5]/15 focus:outline-none"
+                        placeholder="Brief one-line summary of this module..."
+                        className="w-full rounded-xl border border-[#C5CBD9] bg-white p-3 text-xs leading-relaxed text-[#111118] placeholder:text-[#848B9C] focus:border-[#6E32F5] focus:ring-2 focus:ring-[#6E32F5]/15 focus:outline-none"
                       />
                     </div>
                   </div>
@@ -2576,12 +2441,12 @@ function CourseSyllabusContent() {
                                               type="button"
                                               onClick={() =>
                                                 setFocusEditor({
-                                                  kind: 'lesson',
                                                   modId: mod.id,
                                                   subId: sub.id,
                                                   lessonId: les.id,
                                                   title: les.title.replace(/&amp;/g, '&'),
-                                                  value: les.content ?? les.summary ?? '',
+                                                  htmlValue: les.contentHtml,
+                                                  textValue: les.content ?? les.summary ?? '',
                                                 })
                                               }
                                               className="inline-flex items-center gap-1 rounded-lg border border-[#CFD4E0] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#5D26D9] hover:border-[#6E32F5]"
@@ -3004,7 +2869,7 @@ function CourseSyllabusContent() {
         </div>
       )}
 
-      {/* Distraction-Free Fullscreen Script Editor Modal */}
+      {/* Distraction-Free Fullscreen Rich Script Editor Modal */}
       {focusEditor && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-3 backdrop-blur-[2px] sm:p-6"
@@ -3012,11 +2877,11 @@ function CourseSyllabusContent() {
             if (e.target === e.currentTarget) setFocusEditor(null);
           }}
         >
-          <div className="flex h-[86vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[#D2D6E2] bg-white shadow-2xl">
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[#D2D6E2] bg-white shadow-2xl">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#DCE0EA] bg-[#F6F7FB] px-6 py-4">
               <div className="min-w-0">
                 <span className="inline-block rounded-md bg-[#111118] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                  {focusEditor.kind === 'module' ? 'Module Script' : 'Lesson Script'}
+                  Lesson Script Studio
                 </span>
                 <h2 className="mt-1 truncate text-base font-semibold text-[#111118]">
                   {focusEditor.title}
@@ -3026,8 +2891,8 @@ function CourseSyllabusContent() {
               <div className="flex items-center gap-3">
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-[#CFD4E0] bg-white px-3 py-1 font-mono text-xs font-semibold text-[#344054]">
                   <Clock className="h-3.5 w-3.5 text-[#6E32F5]" />
-                  {estimateSpeakingStats(focusEditor.value).timeLabel} ·{' '}
-                  {estimateSpeakingStats(focusEditor.value).wordCount} words
+                  {estimateSpeakingStats(focusEditor.textValue).timeLabel} ·{' '}
+                  {estimateSpeakingStats(focusEditor.textValue).wordCount} words
                 </span>
                 <button
                   type="button"
@@ -3040,24 +2905,20 @@ function CourseSyllabusContent() {
               </div>
             </div>
 
-            <textarea
-              autoFocus
-              value={focusEditor.value}
-              onChange={(e) => {
-                const nextVal = e.target.value;
-                setFocusEditor((prev) => (prev ? { ...prev, value: nextVal } : null));
-                if (focusEditor.kind === 'module') {
-                  if (editingModuleNotes) setModuleNotesDraft(nextVal);
-                  saveCourse({
-                    ...course,
-                    modules: course.modules.map((m) =>
-                      m.id === focusEditor.modId ? { ...m, description: nextVal } : m
-                    ),
-                  });
-                } else {
+            <div className="flex-1 overflow-y-auto p-5">
+              <RichAnswerEditor
+                key={`focus-${focusEditor.lessonId}`}
+                htmlValue={focusEditor.htmlValue}
+                textValue={focusEditor.textValue}
+                minHeightClass="min-h-[65vh]"
+                placeholder="Write or format your script with custom font sizes, colors, and highlights..."
+                onChange={({ html, text }) => {
+                  setFocusEditor((prev) =>
+                    prev ? { ...prev, htmlValue: html, textValue: text } : null
+                  );
                   if (editingStandaloneLesson) {
-                    setStandaloneContentDraft(nextVal);
-                    setStandaloneHtmlDraft(undefined);
+                    setStandaloneHtmlDraft(html);
+                    setStandaloneContentDraft(text);
                   }
                   setSelectedLessonId(focusEditor.lessonId);
                   updateLessonFields(
@@ -3065,16 +2926,14 @@ function CourseSyllabusContent() {
                     focusEditor.subId,
                     focusEditor.lessonId,
                     {
-                      content: nextVal,
-                      contentHtml: undefined,
-                      summary: nextVal.replace(/\s+/g, ' ').slice(0, 140),
+                      content: text,
+                      contentHtml: html,
+                      summary: text.replace(/\s+/g, ' ').slice(0, 140),
                     }
                   );
-                }
-              }}
-              placeholder="Write or trim your script freely. All changes auto-save immediately..."
-              className="flex-1 resize-none bg-white p-6 text-[15px] leading-[1.8] text-[#111118] placeholder:text-[#848B9C] focus:outline-none"
-            />
+                }}
+              />
+            </div>
           </div>
         </div>
       )}
