@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
+  ArrowRight,
   BookOpen,
   BookPlus,
   Check,
@@ -21,6 +22,7 @@ import {
   Trash2,
   Upload,
   Video,
+  X,
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import { extractDocumentText } from '@/lib/doc-parser-client';
@@ -32,7 +34,7 @@ import {
 import { getHtmlSnapshot, saveHtmlSnapshot } from '@/lib/html-snapshot-db';
 import { getLocalMediaBlob, saveLocalMedia } from '@/lib/media-db';
 import { ROLE_LIST } from '@/lib/roles';
-import type { CourseTrackId, DeployedHtmlPage } from '@/lib/types';
+import type { CourseTrackId, DeployedHtmlPage, KnowledgeArticle } from '@/lib/types';
 
 export default function DeployedHtmlPageViewer() {
   const params = useParams<{ id: string }>();
@@ -42,6 +44,7 @@ export default function DeployedHtmlPageViewer() {
     mounted,
     deployHtmlPage,
     updateHtmlPage,
+    importHtmlPageToCourse,
     syncAllHtmlPagesToCourse,
     syncThemeFromHtml,
     upsertKnowledgeArticle,
@@ -50,8 +53,10 @@ export default function DeployedHtmlPageViewer() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [cleanMode, setCleanMode] = useState(true);
   const [editArticleMode, setEditArticleMode] = useState(false);
+  const [editingMetaInSidebar, setEditingMetaInSidebar] = useState(false);
   const [savedNotice, setSavedNotice] = useState('');
-  const [savedToHub, setSavedToHub] = useState(false);
+  const [extractingInsights, setExtractingInsights] = useState(false);
+  const [extractedPreview, setExtractedPreview] = useState<KnowledgeArticle | null>(null);
   const [showVideoStage, setShowVideoStage] = useState(false);
   const [ytInput, setYtInput] = useState('');
   const [videoNotice, setVideoNotice] = useState('');
@@ -70,9 +75,21 @@ export default function DeployedHtmlPageViewer() {
 
   const allPages = useMemo(() => state.deployedHtmlPages ?? [], [state.deployedHtmlPages]);
 
-  const page = useMemo(() => {
-    return allPages.find((p) => p.id === params.id) ?? null;
-  }, [allPages, params.id]);
+  const pageIndex = useMemo(
+    () => allPages.findIndex((p) => p.id === params.id),
+    [allPages, params.id]
+  );
+  const page = pageIndex >= 0 ? allPages[pageIndex] : null;
+  const prevPage = pageIndex > 0 ? allPages[pageIndex - 1] : null;
+  const nextPage =
+    pageIndex >= 0 && pageIndex < allPages.length - 1 ? allPages[pageIndex + 1] : null;
+
+  useEffect(() => {
+    setExtractedPreview(null);
+    setEditArticleMode(false);
+    setEditingMetaInSidebar(false);
+    setSyncedTrackNotice(null);
+  }, [params.id]);
 
   useEffect(() => {
     if (!page?.id) {
@@ -106,20 +123,20 @@ export default function DeployedHtmlPageViewer() {
     };
   }, [page?.id, page?.htmlCloudUrl]);
 
-  const effectiveRawHtml = fullSnapshotHtml && fullSnapshotHtml.length > (page?.rawHtml.length ?? 0)
-    ? fullSnapshotHtml
-    : page?.rawHtml ?? '';
+  const effectiveRawHtml =
+    fullSnapshotHtml && fullSnapshotHtml.length > (page?.rawHtml.length ?? 0)
+      ? fullSnapshotHtml
+      : page?.rawHtml ?? '';
 
   const cleanedReader = useMemo(() => {
     if (!page) return { cleanHtml: '', strippedShell: false, headings: [] };
     return cleanHtmlForReader(effectiveRawHtml, { editable: editArticleMode });
   }, [page, effectiveRawHtml, editArticleMode]);
 
-  // Group all HTML pages by moduleTitle for the left Aced-style directory
   const groupedDirectory = useMemo(() => {
     const map = new Map<string, DeployedHtmlPage[]>();
     allPages.forEach((p) => {
-      const mod = p.moduleTitle?.trim() || 'Product Management Intro';
+      const mod = p.moduleTitle?.trim() || 'Imported Web Guides';
       const arr = map.get(mod) ?? [];
       arr.push(p);
       map.set(mod, arr);
@@ -130,7 +147,7 @@ export default function DeployedHtmlPageViewer() {
   useEffect(() => {
     if (!page) return;
     setTitleDraft(page.title);
-    setModuleDraft(page.moduleTitle || 'Product Management Intro');
+    setModuleDraft(page.moduleTitle || 'Imported Web Guides');
     if (page.courseTrack) {
       setSelectedTrack(page.courseTrack);
     }
@@ -160,7 +177,7 @@ export default function DeployedHtmlPageViewer() {
   if (!mounted) {
     return (
       <div className="rounded-2xl border border-[#ECECF2] bg-white p-8 text-sm text-[#848494]">
-        Loading Course &amp; HTML Studio...
+        Loading HTML Studio...
       </div>
     );
   }
@@ -168,14 +185,14 @@ export default function DeployedHtmlPageViewer() {
   if (!page) {
     return (
       <div className="space-y-4 rounded-2xl border border-[#ECECF2] bg-white p-8 text-center">
-        <h1 className="text-lg font-bold text-[#111118]">未找到该 HTML 页面</h1>
-        <p className="text-xs text-[#525260]">可能已被删除或尚未部署。</p>
+        <h1 className="text-lg font-bold text-[#111118]">HTML Page Not Found</h1>
+        <p className="text-xs text-[#525260]">It may have been deleted or not yet deployed.</p>
         <Link
           href="/pages"
           className="inline-flex items-center gap-1.5 rounded-xl bg-[#6E32F5] px-4 py-2 text-xs font-semibold text-white"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          返回已部署页面列表
+          Back to HTML Pages
         </Link>
       </div>
     );
@@ -183,15 +200,17 @@ export default function DeployedHtmlPageViewer() {
 
   const isThemeSynced = state.syncedTheme?.sourceTitle === page.title;
   const youtubeEmbed = page.videoUrl ? toYouTubeEmbedUrl(page.videoUrl) : null;
-  const playableVideoSrc = localObjectUrl || (page.videoUrl && !youtubeEmbed ? page.videoUrl : null);
+  const playableVideoSrc =
+    localObjectUrl || (page.videoUrl && !youtubeEmbed ? page.videoUrl : null);
   const hasAnyVideo = Boolean(youtubeEmbed || playableVideoSrc);
 
   const handleSaveMeta = () => {
     updateHtmlPage(page.id, {
       title: titleDraft.trim() || page.title,
-      moduleTitle: moduleDraft.trim() || 'Product Management Intro',
+      moduleTitle: moduleDraft.trim() || 'Imported Web Guides',
     });
-    setSavedNotice('目录与标题已更新');
+    setEditingMetaInSidebar(false);
+    setSavedNotice('Updated page title & folder');
     window.setTimeout(() => setSavedNotice(''), 2000);
   };
 
@@ -201,7 +220,6 @@ export default function DeployedHtmlPageViewer() {
       setEditArticleMode(false);
       return;
     }
-    // Clean up editor attributes before saving
     doc.querySelectorAll('[data-bl-editable]').forEach((el) => {
       el.removeAttribute('contenteditable');
       el.removeAttribute('data-bl-editable');
@@ -213,8 +231,9 @@ export default function DeployedHtmlPageViewer() {
       rawHtml: updatedHtml,
       extractedText: extracted.text || page.extractedText,
     });
+    setFullSnapshotHtml(updatedHtml);
     setEditArticleMode(false);
-    setSavedNotice('正文修改已保存');
+    setSavedNotice('Saved article edits');
     window.setTimeout(() => setSavedNotice(''), 2500);
   };
 
@@ -229,7 +248,7 @@ export default function DeployedHtmlPageViewer() {
       if (res.htmlMeta) {
         const created = deployHtmlPage({
           title: res.htmlMeta.title,
-          moduleTitle: moduleDraft.trim() || 'Product Management Intro',
+          moduleTitle: moduleDraft.trim() || 'Imported Web Guides',
           fileName: file.name,
           rawHtml: res.htmlMeta.rawHtml,
           extractedText: res.htmlMeta.text,
@@ -239,27 +258,86 @@ export default function DeployedHtmlPageViewer() {
       }
     }
     if (lastCreatedId) {
-      setSavedNotice(`已批量导入 ${files.length} 个 HTML 页面`);
+      setSavedNotice(`Imported ${files.length} HTML ${files.length === 1 ? 'page' : 'pages'}`);
       router.push(`/pages/${lastCreatedId}`);
     }
   };
 
-  const handleSaveToKnowledge = () => {
-    upsertKnowledgeArticle({
-      id: `art-html-${Date.now()}`,
-      title: page.title,
-      fileName: page.fileName,
-      rawText: page.extractedText || page.rawHtml,
-      summary: page.extractedText.slice(0, 260) || page.title,
-      takeaways: [
-        page.designTokens.fontFamily
-          ? `Font: ${page.designTokens.fontFamily}`
-          : 'Imported from HTML page',
-      ],
-      tags: ['HTML Page'],
-      createdAt: new Date().toISOString(),
-    });
-    setSavedToHub(true);
+  const handleAiExtractToHub = async () => {
+    if (extractingInsights) return;
+    setExtractingInsights(true);
+    setSavedNotice('');
+    try {
+      const content = (
+        page.extractedText || extractReadableTextFromHtml(effectiveRawHtml).text || page.title
+      )
+        .trim()
+        .slice(0, 12000);
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (state.aiSettings.geminiApiKey.trim()) {
+        headers['x-gemini-api-key'] = state.aiSettings.geminiApiKey.trim();
+      }
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          action: 'analyze_article',
+          model: state.aiSettings.model,
+          language: state.aiSettings.language,
+          payload: {
+            title: page.title,
+            content,
+          },
+        }),
+      });
+      const json = (await res.json()) as {
+        data?: {
+          summary: string;
+          takeaways: string[];
+          unifiedAngle?: string;
+          roleNuance?: string;
+          practicalUse?: KnowledgeArticle['practicalUse'];
+          roleAngles?: KnowledgeArticle['roleAngles'];
+          tags: string[];
+        };
+      };
+
+      const article: KnowledgeArticle =
+        res.ok && json.data
+          ? {
+              id: `art-html-${page.id}`,
+              title: page.title,
+              fileName: page.fileName,
+              rawText: content,
+              summary: json.data.summary,
+              takeaways: json.data.takeaways,
+              unifiedAngle: json.data.unifiedAngle,
+              roleNuance: json.data.roleNuance,
+              practicalUse: json.data.practicalUse,
+              roleAngles: json.data.roleAngles,
+              tags: json.data.tags?.length > 0 ? json.data.tags : ['HTML Page'],
+              createdAt: new Date().toISOString(),
+            }
+          : {
+              id: `art-html-${page.id}`,
+              title: page.title,
+              fileName: page.fileName,
+              rawText: content,
+              summary: content.slice(0, 260) || page.title,
+              takeaways: ['Extracted from deployed HTML guide'],
+              tags: ['HTML Page'],
+              createdAt: new Date().toISOString(),
+            };
+
+      upsertKnowledgeArticle(article);
+      setExtractedPreview(article);
+      setSavedNotice('Extracted structured insights to Knowledge Hub');
+      window.setTimeout(() => setSavedNotice(''), 3000);
+    } catch {
+      setSavedNotice('AI extraction failed. Please try again.');
+    } finally {
+      setExtractingInsights(false);
+    }
   };
 
   const handleAttachYoutube = (e: React.FormEvent) => {
@@ -267,7 +345,7 @@ export default function DeployedHtmlPageViewer() {
     setVideoNotice('');
     const embed = toYouTubeEmbedUrl(ytInput);
     if (!embed) {
-      setVideoNotice('请输入有效的 YouTube 链接（支持 youtube.com/watch?v=... 或 youtu.be/...）');
+      setVideoNotice('Please enter a valid YouTube URL (youtube.com/watch?v=... or youtu.be/...).');
       return;
     }
     updateHtmlPage(page.id, {
@@ -294,7 +372,7 @@ export default function DeployedHtmlPageViewer() {
       });
       setShowVideoStage(true);
     } catch {
-      setVideoNotice('视频上传失败，请检查文件格式（支持 MP4 / WebM / MOV）');
+      setVideoNotice('Video upload failed. Use MP4, WebM, or MOV.');
     } finally {
       setUploadingVideo(false);
     }
@@ -308,10 +386,25 @@ export default function DeployedHtmlPageViewer() {
     });
   };
 
+  const handleSyncSinglePage = () => {
+    importHtmlPageToCourse(page.id, selectedTrack);
+    setSyncedTrackNotice(selectedTrack);
+    setSavedNotice(`Synced "${page.title}" to ${selectedTrack.toUpperCase()} course`);
+    window.setTimeout(() => setSavedNotice(''), 3000);
+  };
+
   const handleSyncAllToCourses = () => {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `Sync all ${allPages.length} deployed HTML pages into the ${selectedTrack.toUpperCase()} course syllabus?`
+      )
+    ) {
+      return;
+    }
     syncAllHtmlPagesToCourse(selectedTrack);
     setSyncedTrackNotice(selectedTrack);
-    setSavedNotice(`已将全部 ${allPages.length} 个页面同步到 Courses (${selectedTrack.toUpperCase()})`);
+    setSavedNotice(`Synced all ${allPages.length} pages to ${selectedTrack.toUpperCase()} course`);
     window.setTimeout(() => setSavedNotice(''), 3000);
   };
 
@@ -329,17 +422,17 @@ export default function DeployedHtmlPageViewer() {
             type="button"
             onClick={() => setSidebarOpen((v) => !v)}
             className="inline-flex items-center gap-1.5 rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-2.5 py-1.5 text-xs font-semibold text-[#111118] transition hover:border-[#6E32F5]"
-            title="展开/收起课程章节目录"
+            title="Toggle directory sidebar"
           >
             <PanelLeft className="h-3.5 w-3.5 text-[#6E32F5]" />
-            课程目录
+            Directory
           </button>
           <Link
             href="/pages"
             className="inline-flex items-center gap-1 rounded-xl border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#525260] transition hover:border-[#6E32F5] hover:text-[#111118]"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            页面库
+            All Pages
           </Link>
           {savedNotice && (
             <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
@@ -357,7 +450,7 @@ export default function DeployedHtmlPageViewer() {
               className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-emerald-700"
             >
               <Save className="h-3.5 w-3.5" />
-              保存正文修改
+              Save Article
             </button>
           ) : (
             <button
@@ -368,10 +461,10 @@ export default function DeployedHtmlPageViewer() {
               }}
               data-testid="html-edit-content-button"
               className="inline-flex items-center gap-1.5 rounded-xl border border-[#ECECF2] bg-white px-3 py-1.5 text-xs font-semibold text-[#111118] transition hover:border-[#6E32F5]"
-              title="直接点击文章内文字进行编辑或删除不需要的内容"
+              title="Click text inside the article to edit directly"
             >
               <Edit3 className="h-3.5 w-3.5 text-[#6E32F5]" />
-              编辑正文
+              Edit Article
             </button>
           )}
 
@@ -385,7 +478,7 @@ export default function DeployedHtmlPageViewer() {
             }`}
           >
             <Film className="h-3.5 w-3.5" />
-            {hasAnyVideo ? '视频已挂载' : '挂载视频'}
+            {hasAnyVideo ? 'Video Attached' : 'Attach Video'}
           </button>
 
           <button
@@ -399,7 +492,7 @@ export default function DeployedHtmlPageViewer() {
             }`}
           >
             <Sparkles className="h-3.5 w-3.5" />
-            {cleanMode ? '纯净模式' : '原网页'}
+            {cleanMode ? 'Reader Mode' : 'Original HTML'}
           </button>
 
           <button
@@ -418,73 +511,139 @@ export default function DeployedHtmlPageViewer() {
             {isThemeSynced ? (
               <>
                 <RotateCcw className="h-3.5 w-3.5" />
-                恢复UI
+                Reset Theme
               </>
             ) : (
               <>
                 <Palette className="h-3.5 w-3.5" />
-                同步字体
+                Sync Theme
               </>
             )}
           </button>
 
           <button
             type="button"
-            onClick={handleSaveToKnowledge}
-            disabled={savedToHub}
-            className="inline-flex items-center gap-1 rounded-xl border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#525260] transition hover:border-[#6E32F5] disabled:opacity-60"
+            onClick={handleAiExtractToHub}
+            disabled={extractingInsights}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-[#D4C5FD] bg-[#F7F4FF] px-3 py-1.5 text-xs font-semibold text-[#5D26D9] transition hover:bg-[#EFE8FF] disabled:opacity-60"
           >
-            {savedToHub ? (
-              <Check className="h-3.5 w-3.5 text-emerald-600" />
+            {extractingInsights ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Extracting...
+              </>
+            ) : extractedPreview ? (
+              <>
+                <Check className="h-3.5 w-3.5 text-emerald-600" />
+                Insights Saved
+              </>
             ) : (
-              <BookPlus className="h-3.5 w-3.5 text-[#6E32F5]" />
+              <>
+                <BookPlus className="h-3.5 w-3.5" />
+                Extract Insights
+              </>
             )}
-            {savedToHub ? '已入库' : '存Hub'}
           </button>
         </div>
       </div>
 
-      {/* 3-Column Aced-Style Course Studio */}
+      {/* Dismissible AI Summary Preview Banner after extraction */}
+      {extractedPreview && (
+        <div className="rounded-2xl border border-[#D4C5FD] bg-[#F8F6FF] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-[#5D26D9]">
+              <Sparkles className="h-4 w-4" />
+              AI Takeaways Extracted &amp; Saved to Knowledge Ocean
+            </div>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/knowledge"
+                className="text-xs font-semibold text-[#6E32F5] hover:underline"
+              >
+                Open in Knowledge Hub →
+              </Link>
+              <button
+                type="button"
+                onClick={() => setExtractedPreview(null)}
+                className="rounded-lg p-1 text-[#667085] hover:bg-white"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+          <p className="mt-1.5 text-xs leading-relaxed text-[#2E2E3A]">
+            {extractedPreview.summary}
+          </p>
+          {extractedPreview.takeaways.length > 0 && (
+            <ul className="mt-2 space-y-1 text-xs text-[#475467]">
+              {extractedPreview.takeaways.slice(0, 4).map((t, idx) => (
+                <li key={idx}>• {t}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* 3-Column Course & HTML Studio */}
       <div className="flex items-start gap-4">
-        {/* Left Column: Custom Course Directory + Inline Chapter/Title Editor */}
+        {/* Left Column: Directory + Collapsible Rename/Move + Single-Page Course Sync */}
         {sidebarOpen && (
           <aside
             className="sticky top-4 flex w-64 shrink-0 flex-col gap-3 rounded-2xl border border-[#ECECF2] bg-white p-3.5 shadow-2xs"
             data-testid="html-course-sidebar"
           >
-            {/* Inline Chapter & Lesson Title Editor */}
-            <div className="space-y-2 rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-2.5">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-[#848494]">
-                当前课程归类与标题
+            {/* Current Page Title + Collapsible Rename/Move */}
+            <div className="rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-[10px] font-bold uppercase tracking-wider text-[#848494]">
+                    {page.moduleTitle || 'Imported Web Guides'}
+                  </div>
+                  <div className="truncate text-xs font-semibold text-[#111118]">
+                    {page.title}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingMetaInSidebar((v) => !v)}
+                  className="shrink-0 rounded-lg border border-[#DCE0EA] bg-white px-2 py-1 text-[10px] font-semibold text-[#475467] hover:border-[#6E32F5] hover:text-[#111118]"
+                >
+                  {editingMetaInSidebar ? 'Close' : 'Rename'}
+                </button>
               </div>
-              <input
-                type="text"
-                value={moduleDraft}
-                onChange={(e) => setModuleDraft(e.target.value)}
-                onBlur={handleSaveMeta}
-                placeholder="章节名 (如 Product Management Intro)"
-                data-testid="html-module-input"
-                className="w-full rounded-lg border border-[#E2E2EC] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#111118] focus:border-[#6E32F5] focus:outline-none"
-              />
-              <input
-                type="text"
-                value={titleDraft}
-                onChange={(e) => setTitleDraft(e.target.value)}
-                onBlur={handleSaveMeta}
-                placeholder="自定义课程标题"
-                data-testid="html-title-input"
-                className="w-full rounded-lg border border-[#E2E2EC] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#111118] focus:border-[#6E32F5] focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={handleSaveMeta}
-                className="w-full rounded-lg bg-[#F3ECFF] py-1 text-[11px] font-semibold text-[#6E32F5] transition hover:bg-[#6E32F5] hover:text-white"
-              >
-                保存目录与标题
-              </button>
+
+              {editingMetaInSidebar && (
+                <div className="mt-2.5 space-y-2 border-t border-[#ECEEF4] pt-2.5">
+                  <input
+                    type="text"
+                    value={moduleDraft}
+                    onChange={(e) => setModuleDraft(e.target.value)}
+                    onBlur={handleSaveMeta}
+                    placeholder="Folder / Module name"
+                    data-testid="html-module-input"
+                    className="w-full rounded-lg border border-[#D4D8E4] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#111118] focus:border-[#6E32F5] focus:outline-none"
+                  />
+                  <input
+                    type="text"
+                    value={titleDraft}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    onBlur={handleSaveMeta}
+                    placeholder="Page title"
+                    data-testid="html-title-input"
+                    className="w-full rounded-lg border border-[#D4D8E4] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#111118] focus:border-[#6E32F5] focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveMeta}
+                    className="w-full rounded-lg bg-[#111118] py-1 text-[11px] font-semibold text-white hover:opacity-90"
+                  >
+                    Save Title &amp; Folder
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Batch Upload 10+ HTML Pages */}
+            {/* Batch Upload More HTML Pages */}
             <input
               ref={batchHtmlInputRef}
               type="file"
@@ -496,14 +655,14 @@ export default function DeployedHtmlPageViewer() {
             <button
               type="button"
               onClick={() => batchHtmlInputRef.current?.click()}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#D4C5FD] bg-[#F9F6FF] py-2 text-xs font-semibold text-[#6E32F5] transition hover:bg-[#F3ECFF]"
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#D4C5FD] bg-[#F9F6FF] py-2 text-xs font-semibold text-[#5D26D9] transition hover:bg-[#F3ECFF]"
             >
               <Plus className="h-3.5 w-3.5" />
-              批量添加 HTML 课程页
+              Add HTML Pages
             </button>
 
             {/* Grouped Chapter Directory */}
-            <div className="max-h-[48vh] space-y-3 overflow-y-auto pr-0.5">
+            <div className="max-h-[52vh] space-y-3 overflow-y-auto pr-0.5">
               {groupedDirectory.map(([modName, items]) => (
                 <div key={modName} className="space-y-1">
                   <div className="flex items-center gap-1.5 px-1 text-[10px] font-bold uppercase tracking-wider text-[#848494]">
@@ -519,7 +678,7 @@ export default function DeployedHtmlPageViewer() {
                           href={`/pages/${item.id}`}
                           className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition ${
                             active
-                              ? 'bg-[#F3ECFF] font-semibold text-[#6E32F5]'
+                              ? 'bg-[#F4EFFF] font-semibold text-[#5D26D9]'
                               : 'text-[#525260] hover:bg-[#FAFAFC] hover:text-[#111118]'
                           }`}
                         >
@@ -537,50 +696,62 @@ export default function DeployedHtmlPageViewer() {
               ))}
             </div>
 
-            {/* Sync All Directory to Courses */}
-            <div className="space-y-1.5 border-t border-[#ECECF2] pt-2.5">
+            {/* Single-Page & Optional Bulk Sync to Courses */}
+            <div className="space-y-2 border-t border-[#ECECF2] pt-2.5">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-[#848494]">
+                Sync to Course Track
+              </div>
               <div className="flex items-center gap-1.5">
                 <select
                   value={selectedTrack}
                   onChange={(e) => setSelectedTrack(e.target.value as CourseTrackId)}
-                  aria-label="同步到赛道"
-                  className="flex-1 rounded-lg border border-[#ECECF2] bg-[#FAFAFC] px-2 py-1.5 text-xs font-semibold text-[#111118] focus:outline-none"
+                  aria-label="Target course track"
+                  className="flex-1 rounded-lg border border-[#D4D8E4] bg-[#FAFAFC] px-2 py-1.5 text-xs font-semibold text-[#111118] focus:outline-none"
                 >
                   {ROLE_LIST.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.shortLabel}
                     </option>
                   ))}
+                  <option value="self-intro">Self Intro</option>
                 </select>
                 <button
                   type="button"
-                  onClick={handleSyncAllToCourses}
+                  onClick={handleSyncSinglePage}
                   data-testid="html-import-course-button"
-                  className="inline-flex items-center gap-1 rounded-lg bg-[#111118] px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[#2E2E3A]"
+                  className="inline-flex items-center gap-1 rounded-lg bg-[#111118] px-2.5 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
+                  title="Sync only this page into the selected course"
                 >
                   <BookOpen className="h-3.5 w-3.5" />
-                  同步全部
+                  Sync Page
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={handleSyncAllToCourses}
+                className="w-full rounded-lg border border-[#E2E5EE] bg-white py-1 text-[11px] font-medium text-[#667085] transition hover:border-[#6E32F5] hover:text-[#111118]"
+              >
+                Sync All {allPages.length} Pages to {selectedTrack.toUpperCase()}
+              </button>
               {syncedTrackNotice && (
                 <Link
                   href={`/courses/${syncedTrackNotice}`}
                   className="block text-center text-[11px] font-semibold text-[#6E32F5] hover:underline"
                 >
-                  前往 {syncedTrackNotice.toUpperCase()} 课程查看目录 →
+                  Open {syncedTrackNotice.toUpperCase()} Course →
                 </Link>
               )}
             </div>
           </aside>
         )}
 
-        {/* Center Column: Video Stage + Editable Original-Styled Article */}
+        {/* Center Column: Video Stage + Editable Reader + Prev/Next */}
         <div className="min-w-0 flex-1 space-y-3">
           {showVideoStage && (
             <div className="rounded-2xl border border-[#ECECF2] bg-white p-4 shadow-2xs">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-bold text-[#111118]">
-                  课程视频（支持 YouTube 链接或本地 MP4 上传）
+                  Lesson Video (YouTube URL or Local MP4)
                 </span>
                 {hasAnyVideo && (
                   <button
@@ -589,7 +760,7 @@ export default function DeployedHtmlPageViewer() {
                     className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50"
                   >
                     <Trash2 className="h-3 w-3" />
-                    移除
+                    Remove
                   </button>
                 )}
               </div>
@@ -600,14 +771,14 @@ export default function DeployedHtmlPageViewer() {
                   className="flex min-w-[240px] flex-1 items-center gap-2"
                 >
                   <div className="relative flex-1">
-                    <Video className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-rose-500" />
+                    <Video className="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-rose-500" />
                     <input
                       type="url"
                       value={ytInput}
                       onChange={(e) => setYtInput(e.target.value)}
-                      placeholder="粘贴 YouTube 视频链接..."
+                      placeholder="Paste YouTube video URL..."
                       data-testid="html-youtube-input"
-                      className="w-full rounded-xl border border-[#ECECF2] bg-[#FAFAFC] py-2 pl-8 pr-3 text-xs text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none"
+                      className="w-full rounded-xl border border-[#D4D8E4] bg-[#FAFAFC] py-2 pr-3 pl-8 text-xs text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none"
                     />
                   </div>
                   <button
@@ -615,7 +786,7 @@ export default function DeployedHtmlPageViewer() {
                     data-testid="html-youtube-submit"
                     className="rounded-xl bg-[#6E32F5] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#5B24D6]"
                   >
-                    插入 YouTube
+                    Attach YouTube
                   </button>
                 </form>
 
@@ -630,14 +801,14 @@ export default function DeployedHtmlPageViewer() {
                   type="button"
                   onClick={() => videoInputRef.current?.click()}
                   disabled={uploadingVideo}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#D4C5FD] bg-[#F9F6FF] px-3 py-2 text-xs font-semibold text-[#6E32F5] transition hover:bg-[#F3ECFF] disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#D4C5FD] bg-[#F9F6FF] px-3 py-2 text-xs font-semibold text-[#5D26D9] transition hover:bg-[#F3ECFF] disabled:opacity-60"
                 >
                   {uploadingVideo ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
                     <Upload className="h-3.5 w-3.5" />
                   )}
-                  {uploadingVideo ? '上传中...' : '上传本地 MP4'}
+                  {uploadingVideo ? 'Uploading...' : 'Upload MP4'}
                 </button>
               </div>
 
@@ -672,7 +843,7 @@ export default function DeployedHtmlPageViewer() {
 
           {editArticleMode && (
             <div className="rounded-xl border border-[#D4C5FD] bg-[#F6F1FF] px-4 py-2 text-xs font-medium text-[#4C1D95]">
-              ✏️ 已开启正文直编模式：直接点击下方文章任意文字即可修改或删除，完成后点击右上角绿色「保存正文修改」。
+              Direct edit enabled: click any paragraph below to modify or delete text, then click &ldquo;Save Article&rdquo;.
             </div>
           )}
 
@@ -686,13 +857,40 @@ export default function DeployedHtmlPageViewer() {
               data-testid="html-reader-iframe"
             />
           </div>
+
+          {/* Bottom Previous / Next Page Navigation */}
+          {(prevPage || nextPage) && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#ECECF2] bg-white px-4 py-3">
+              {prevPage ? (
+                <Link
+                  href={`/pages/${prevPage.id}`}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#D4D8E4] px-3 py-1.5 text-xs font-semibold text-[#111118] hover:border-[#6E32F5]"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  <span className="max-w-[200px] truncate">{prevPage.title}</span>
+                </Link>
+              ) : (
+                <span />
+              )}
+
+              {nextPage && (
+                <Link
+                  href={`/pages/${nextPage.id}`}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#111118] px-3.5 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+                >
+                  <span className="max-w-[200px] truncate">{nextPage.title}</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Right Column: Auto-extracted Lesson Contents TOC */}
         {cleanedReader.headings.length > 0 && (
           <aside className="sticky top-4 hidden w-48 shrink-0 rounded-2xl border border-[#ECECF2] bg-white p-3.5 shadow-2xs xl:block">
             <div className="text-[11px] font-bold uppercase tracking-wider text-[#848494]">
-              Lesson contents
+              On This Page
             </div>
             <nav className="mt-2.5 space-y-1">
               {cleanedReader.headings.map((h) => (

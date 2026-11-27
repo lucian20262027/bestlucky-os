@@ -28,6 +28,30 @@ function cleanFontValue(raw: string): string | undefined {
   return cleaned;
 }
 
+export function isAccessibleAccentHex(hex?: string): boolean {
+  if (!hex) return false;
+  const raw = hex.trim().replace(/^#/, '');
+  let full = '';
+  if (/^[0-9a-fA-F]{3}$/.test(raw)) {
+    full = raw
+      .split('')
+      .map((ch) => ch + ch)
+      .join('');
+  } else if (/^[0-9a-fA-F]{6}$/.test(raw)) {
+    full = raw;
+  } else {
+    return false;
+  }
+  const r = parseInt(full.slice(0, 2), 16) / 255;
+  const g = parseInt(full.slice(2, 4), 16) / 255;
+  const b = parseInt(full.slice(4, 6), 16) / 255;
+  const toLin = (c: number) =>
+    c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  const L = 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b);
+  const contrastWithWhite = (1.0 + 0.05) / (L + 0.05);
+  return contrastWithWhite >= 4.2;
+}
+
 function extractFirstHex(text: string): string | undefined {
   const matches = text.match(/#[0-9a-fA-F]{6}\b/g);
   if (!matches) return undefined;
@@ -43,7 +67,9 @@ function extractFirstHex(text: string): string | undefined {
     ) {
       continue;
     }
-    return upper;
+    if (isAccessibleAccentHex(upper)) {
+      return upper;
+    }
   }
   return undefined;
 }
@@ -80,11 +106,11 @@ export function extractDesignTokensFromHtml(rawHtml: string): HtmlDesignTokens {
     tokens.headingFont = cleanFontValue(headingFontMatch[1]);
   }
 
-  // 4. Accent color (--accent, --primary, or vibrant color in CSS)
+  // 4. Accent color (--accent, --primary, or vibrant color in CSS with accessible contrast)
   const cssVarAccent = styleBlocks.match(
     /--(?:accent|primary|brand|theme-color)\s*:\s*(#[0-9a-fA-F]{3,8})/i
   );
-  if (cssVarAccent?.[1]) {
+  if (cssVarAccent?.[1] && isAccessibleAccentHex(cssVarAccent[1])) {
     tokens.accentColor = cssVarAccent[1];
   } else {
     tokens.accentColor = extractFirstHex(styleBlocks);

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { cleanHtmlForReader } from '@/lib/html-parser';
+import { cleanHtmlForReader, isAccessibleAccentHex } from '@/lib/html-parser';
 import {
   deleteHtmlSnapshot,
   saveHtmlSnapshot,
@@ -1171,7 +1171,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       root.style.removeProperty('--font-sans-stack');
     }
 
-    if (theme.accentColor) {
+    if (theme.accentColor && isAccessibleAccentHex(theme.accentColor)) {
       root.style.setProperty('--accent', theme.accentColor);
     } else {
       root.style.removeProperty('--accent');
