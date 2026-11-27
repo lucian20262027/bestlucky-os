@@ -12,29 +12,29 @@ interface RichAnswerEditorProps {
 }
 
 const FONT_OPTIONS = [
-  { label: '默认无衬线 (Inter)', value: 'Inter, system-ui, sans-serif' },
-  { label: '优雅衬线 (Georgia)', value: 'Georgia, serif' },
-  { label: '苹果苹方 (PingFang)', value: '"PingFang SC", sans-serif' },
-  { label: '代码等宽 (Mono)', value: '"JetBrains Mono", monospace' },
+  { label: 'Inter', value: 'Inter, system-ui, sans-serif' },
+  { label: 'Georgia', value: 'Georgia, serif' },
+  { label: 'PingFang', value: '"PingFang SC", sans-serif' },
+  { label: 'Mono', value: '"JetBrains Mono", monospace' },
 ];
 
 const SIZE_OPTIONS = [
-  { label: '18px', size: '18px', execSize: '1' },
-  { label: '20px', size: '20px', execSize: '2' },
-  { label: '22px', size: '22px', execSize: '3' },
-  { label: '24px', size: '24px', execSize: '4' },
-  { label: '26px', size: '26px', execSize: '5' },
-  { label: '30px', size: '30px', execSize: '6' },
-  { label: '36px', size: '36px', execSize: '7' },
+  { label: '13px', size: '13px', execSize: '1' },
+  { label: '14px', size: '14px', execSize: '2' },
+  { label: '15px', size: '15px', execSize: '3' },
+  { label: '16px', size: '16px', execSize: '4' },
+  { label: '18px', size: '18px', execSize: '5' },
+  { label: '20px', size: '20px', execSize: '6' },
+  { label: '24px', size: '24px', execSize: '7' },
 ];
 
 const COLOR_SWATCHES = [
-  { label: '经典黑', color: '#111118' },
-  { label: '主题紫', color: '#6E32F5' },
-  { label: '深海蓝', color: '#2563EB' },
-  { label: '翡翠绿', color: '#059669' },
-  { label: '玫瑰红', color: '#E11D48' },
-  { label: '琥珀橙', color: '#D97706' },
+  { label: 'Ink', color: '#111118' },
+  { label: 'Violet', color: '#6E32F5' },
+  { label: 'Blue', color: '#2563EB' },
+  { label: 'Emerald', color: '#059669' },
+  { label: 'Rose', color: '#E11D48' },
+  { label: 'Amber', color: '#D97706' },
 ];
 
 function plainTextToHtml(text: string): string {
@@ -55,7 +55,7 @@ export function RichAnswerEditor({
   htmlValue,
   textValue,
   placeholder,
-  minHeightClass = 'min-h-[340px]',
+  minHeightClass = 'min-h-[260px]',
   onChange,
 }: RichAnswerEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null);
@@ -113,7 +113,7 @@ export function RichAnswerEditor({
         data-testid="rich-answer-toolbar"
       >
         <select
-          aria-label="选中文字字体"
+          aria-label="Selected text font"
           defaultValue=""
           onChange={(e) => {
             if (!e.target.value) return;
@@ -124,7 +124,7 @@ export function RichAnswerEditor({
           data-testid="rich-font-select"
         >
           <option value="" disabled>
-            选中字体...
+            Font...
           </option>
           {FONT_OPTIONS.map((f) => (
             <option key={f.label} value={f.value}>
@@ -144,7 +144,7 @@ export function RichAnswerEditor({
               }}
               data-testid={`rich-size-${s.size}`}
               className="rounded px-1.5 py-0.5 text-[11px] font-semibold text-[#525260] hover:bg-[#F3ECFF] hover:text-[#6E32F5]"
-              title={`选中文字字号 ${s.size}`}
+              title={`Font size ${s.size}`}
             >
               {s.label}
             </button>
@@ -163,7 +163,7 @@ export function RichAnswerEditor({
               data-testid={`rich-color-${c.color.slice(1)}`}
               className="h-4 w-4 rounded-full border border-black/15 transition hover:scale-110"
               style={{ backgroundColor: c.color }}
-              title={`选中文字颜色: ${c.label}`}
+              title={`Text color: ${c.label}`}
             />
           ))}
         </div>
@@ -175,10 +175,10 @@ export function RichAnswerEditor({
             applyCommand('hiliteColor', '#FEF08A');
           }}
           className="inline-flex items-center gap-1 rounded-lg border border-[#ECECF2] bg-white px-2 py-1 text-[11px] font-semibold text-[#525260] hover:border-amber-300 hover:bg-amber-50"
-          title="黄色荧光高亮选中文字"
+          title="Highlight selected text"
         >
           <Highlighter className="h-3 w-3 text-amber-500" />
-          高亮
+          Highlight
         </button>
 
         <button
@@ -188,7 +188,7 @@ export function RichAnswerEditor({
             applyCommand('bold');
           }}
           className="rounded-lg border border-[#ECECF2] bg-white p-1.5 text-[#525260] hover:border-[#6E32F5] hover:text-[#6E32F5]"
-          title="加粗"
+          title="Bold"
         >
           <Bold className="h-3 w-3" />
         </button>
@@ -200,7 +200,7 @@ export function RichAnswerEditor({
             applyCommand('italic');
           }}
           className="rounded-lg border border-[#ECECF2] bg-white p-1.5 text-[#525260] hover:border-[#6E32F5] hover:text-[#6E32F5]"
-          title="斜体"
+          title="Italic"
         >
           <Italic className="h-3 w-3" />
         </button>
@@ -212,10 +212,10 @@ export function RichAnswerEditor({
             applyCommand('removeFormat');
           }}
           className="inline-flex items-center gap-1 rounded-lg border border-[#ECECF2] bg-white px-2 py-1 text-[11px] text-[#848494] hover:text-[#111118]"
-          title="清除选中文字格式"
+          title="Clear formatting"
         >
           <Eraser className="h-3 w-3" />
-          清除格式
+          Clear
         </button>
       </div>
 
@@ -227,7 +227,7 @@ export function RichAnswerEditor({
         onInput={emitUpdate}
         data-placeholder={placeholder}
         data-testid="rich-answer-editable"
-        className={`${minHeightClass} w-full overflow-y-auto p-5 text-[18px] leading-relaxed text-[#111118] focus:outline-none [&>p]:mb-2.5`}
+        className={`${minHeightClass} w-full overflow-y-auto p-5 text-[14.5px] leading-[1.7] text-[#111118] focus:outline-none [&>p]:mb-2.5`}
       />
     </div>
   );

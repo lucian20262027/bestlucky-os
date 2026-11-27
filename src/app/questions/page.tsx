@@ -19,6 +19,7 @@ import {
   Video,
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
+import { BankHubTabs } from '@/components/BankHubTabs';
 import { QuestionModal } from '@/components/QuestionModal';
 import {
   getAllQuestions,
@@ -40,11 +41,9 @@ import {
 
 function QuestionBankInner() {
   const searchParams = useSearchParams();
-  const initialRoleParam = searchParams.get('role');
-  const validInitialRole: RoleTrack | 'all' =
-    initialRoleParam && ROLES_BY_ID[initialRoleParam as RoleTrack]
-      ? (initialRoleParam as RoleTrack)
-      : 'all';
+  const roleParam = searchParams.get('role');
+  const validParamRole: RoleTrack | 'all' =
+    roleParam && ROLES_BY_ID[roleParam as RoleTrack] ? (roleParam as RoleTrack) : 'all';
 
   const {
     state,
@@ -56,6 +55,7 @@ function QuestionBankInner() {
     updateCustomCategories,
   } = useApp();
 
+  const [roleFilter, setRoleFilter] = useState<RoleTrack | 'all'>(validParamRole);
   const [categoryFilter, setCategoryFilter] = useState<QuestionCategory | 'all'>('all');
   const [managingCategories, setManagingCategories] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -63,10 +63,14 @@ function QuestionBankInner() {
   const [difficultyFilter, setDifficultyFilter] = useState<Difficulty | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<QuestionStatus | 'all'>('all');
   const [search, setSearch] = useState('');
-  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const [expandedRubrics, setExpandedRubrics] = useState<Record<string, boolean>>({});
   const [expandedAnswers, setExpandedAnswers] = useState<Record<string, boolean>>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<InterviewQuestion | null>(null);
+
+  useEffect(() => {
+    setRoleFilter(validParamRole);
+  }, [validParamRole]);
 
   const categoriesList = useMemo(
     () =>
@@ -78,17 +82,40 @@ function QuestionBankInner() {
 
   const allQuestions = useMemo(() => getAllQuestions(state), [state]);
 
-  const categoryCounts = useMemo(() => {
+  const roleCounts = useMemo(() => {
     const counts: Record<string, number> = { all: allQuestions.length };
-    categoriesList.forEach((cat) => {
-      counts[cat.id] = allQuestions.filter((q) => inferQuestionCategory(q) === cat.id).length;
+    ROLE_LIST.forEach((r) => {
+      counts[r.id] = allQuestions.filter(
+        (q) => q.role === r.id || q.secondaryRoles.includes(r.id)
+      ).length;
     });
     return counts;
-  }, [allQuestions, categoriesList]);
+  }, [allQuestions]);
+
+  const categoryCounts = useMemo(() => {
+    const base =
+      roleFilter === 'all'
+        ? allQuestions
+        : allQuestions.filter(
+            (q) => q.role === roleFilter || q.secondaryRoles.includes(roleFilter)
+          );
+    const counts: Record<string, number> = { all: base.length };
+    categoriesList.forEach((cat) => {
+      counts[cat.id] = base.filter((q) => inferQuestionCategory(q) === cat.id).length;
+    });
+    return counts;
+  }, [allQuestions, categoriesList, roleFilter]);
 
   const filteredQuestions = useMemo(() => {
     const qLower = search.trim().toLowerCase();
     return allQuestions.filter((item) => {
+      if (
+        roleFilter !== 'all' &&
+        item.role !== roleFilter &&
+        !item.secondaryRoles.includes(roleFilter)
+      ) {
+        return false;
+      }
       if (categoryFilter !== 'all' && inferQuestionCategory(item) !== categoryFilter) {
         return false;
       }
@@ -110,6 +137,7 @@ function QuestionBankInner() {
     });
   }, [
     allQuestions,
+    roleFilter,
     categoryFilter,
     roundFilter,
     difficultyFilter,
@@ -118,20 +146,34 @@ function QuestionBankInner() {
     state,
   ]);
 
-  const toggleExpand = (id: string) => {
-    setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  const toggleRubric = (id: string) => {
+    setExpandedRubrics((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const toggleAnswerPreview = (id: string) => {
+    setExpandedAnswers((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleDeleteCustom = (q: InterviewQuestion) => {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(`Delete custom question "${q.title}"?`)
+    ) {
+      return;
+    }
+    deleteCustomQuestion(q.id);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[#111118]">
-            7-Track Question, Answer &amp; Video Bank
+            Question &amp; Answer Bank
           </h1>
           <p className="mt-1 text-sm text-[#525260]">
-            共 {allQuestions.length} 道实战题目。点击每道题的 <strong>Study &amp; Edit Answer</strong> 即可阅读参考范文、补充子题与文字答案、上传视频并 Publish。
+            {allQuestions.length} interview prompts across 7 tracks. Filter by role, preview rubrics inline, or open Answer Studio.
           </p>
         </div>
 
@@ -145,7 +187,7 @@ function QuestionBankInner() {
             }
             className="rounded-xl border border-[#ECECF2] bg-white px-3 py-2 text-xs font-medium text-[#525260] hover:text-[#111118]"
           >
-            Hints: {state.aiSettings.language === 'en' ? 'EN Only' : 'EN + 中文提示'}
+            {state.aiSettings.language === 'en' ? 'Hints: EN Only' : 'Bilingual Hints: On'}
           </button>
 
           <Link
@@ -162,36 +204,55 @@ function QuestionBankInner() {
               setEditingQuestion(null);
               setModalOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#6E32F5] px-4 py-2 text-xs font-semibold text-white hover:opacity-95"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#6E32F5] px-4 py-2 text-xs font-semibold text-white hover:bg-[#5B24D6]"
           >
             <Plus className="h-3.5 w-3.5" />
-            Add Q&amp;A / Video
+            Add Question
           </button>
         </div>
       </div>
 
-      {/* Unified Questions & Story Bank Switcher */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-[#ECECF2] pb-3">
-        <span className="inline-flex items-center gap-1.5 rounded-xl bg-[#6E32F5] px-3.5 py-1.5 text-xs font-semibold text-white">
-          <BookOpen className="h-3.5 w-3.5" />
-          题目库 (Questions · {allQuestions.length})
-        </span>
-        <Link
-          href="/stories"
-          className="inline-flex items-center gap-1.5 rounded-xl border border-[#ECECF2] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#525260] transition hover:border-[#6E32F5]/40 hover:text-[#6E32F5]"
+      {/* Shared Hub Switcher */}
+      <BankHubTabs
+        active="questions"
+        questionCount={allQuestions.length}
+        storyCount={state.stories.length}
+        libraryCount={state.libraryItems.length}
+      />
+
+      {/* Role Track Filter Bar */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setRoleFilter('all')}
+          className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
+            roleFilter === 'all'
+              ? 'border-[#111118] bg-[#111118] text-white'
+              : 'border-[#ECECF2] bg-white text-[#525260] hover:text-[#111118]'
+          }`}
         >
-          STAR+L 故事库 ({state.stories.length})
-        </Link>
-        <Link
-          href="/stories?tab=videos"
-          className="inline-flex items-center gap-1.5 rounded-xl border border-[#ECECF2] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#525260] transition hover:border-[#6E32F5]/40 hover:text-[#6E32F5]"
-        >
-          <Video className="h-3.5 w-3.5" />
-          视频 &amp; 飞书导入
-        </Link>
+          All Tracks ({roleCounts.all})
+        </button>
+        {ROLE_LIST.map((r) => {
+          const active = roleFilter === r.id;
+          return (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => setRoleFilter((prev) => (prev === r.id ? 'all' : r.id))}
+              className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
+                active
+                  ? 'border-[#111118] bg-[#111118] text-white'
+                  : 'border-[#ECECF2] bg-white text-[#525260] hover:border-[#D4C5FD] hover:text-[#111118]'
+              }`}
+            >
+              {r.shortLabel} ({roleCounts[r.id] ?? 0})
+            </button>
+          );
+        })}
       </div>
 
-      {/* Question Category Pills (问题大类) + Category Manager */}
+      {/* Category Pills + Manager */}
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <button
@@ -199,8 +260,8 @@ function QuestionBankInner() {
             onClick={() => setCategoryFilter('all')}
             className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
               categoryFilter === 'all'
-                ? 'border-[#6E32F5] bg-[#F3ECFF] text-[#6E32F5]'
-                : 'border-[#ECECF2] bg-white text-[#5E5E6E] hover:border-[#6E32F5]/40'
+                ? 'border-[#6E32F5] bg-[#F4EFFF] text-[#5D26D9]'
+                : 'border-[#ECECF2] bg-white text-[#5E5E6E] hover:border-[#D4C5FD]'
             }`}
           >
             All Categories ({categoryCounts.all})
@@ -214,8 +275,8 @@ function QuestionBankInner() {
                 onClick={() => setCategoryFilter(cat.id)}
                 className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
                   active
-                    ? 'border-[#6E32F5] bg-[#6E32F5] text-white'
-                    : 'border-[#ECECF2] bg-white text-[#5E5E6E] hover:border-[#6E32F5]/40 hover:text-[#111118]'
+                    ? 'border-[#6E32F5] bg-[#F4EFFF] text-[#5D26D9]'
+                    : 'border-[#ECECF2] bg-white text-[#5E5E6E] hover:border-[#D4C5FD] hover:text-[#111118]'
                 }`}
               >
                 {cat.label} ({categoryCounts[cat.id] ?? 0})
@@ -228,12 +289,12 @@ function QuestionBankInner() {
             data-testid="manage-categories-button"
             className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
               managingCategories
-                ? 'border-[#6E32F5] bg-[#F3ECFF] text-[#6E32F5]'
+                ? 'border-[#6E32F5] bg-[#F4EFFF] text-[#5D26D9]'
                 : 'border-dashed border-[#D4C5FD] bg-white text-[#6E32F5] hover:bg-[#F9F6FF]'
             }`}
           >
             <Edit3 className="h-3 w-3" />
-            {managingCategories ? '完成分类管理' : '管理分类'}
+            {managingCategories ? 'Done' : 'Manage Categories'}
           </button>
         </div>
 
@@ -243,15 +304,15 @@ function QuestionBankInner() {
             data-testid="category-manager-panel"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-bold text-[#6E32F5]">
-                自定义问题分类（支持重命名、删除与新增）
+              <span className="text-xs font-semibold text-[#5D26D9]">
+                Custom Question Categories
               </span>
               <div className="flex items-center gap-1.5">
                 <input
                   type="text"
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
-                  placeholder="新分类名称 (如 AI Agents)"
+                  placeholder="New category (e.g. AI Agents)"
                   data-testid="new-category-input"
                   className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1 text-xs focus:border-[#6E32F5] focus:outline-none"
                 />
@@ -280,7 +341,7 @@ function QuestionBankInner() {
                   className="inline-flex items-center gap-1 rounded-lg bg-[#6E32F5] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#5B24D6]"
                 >
                   <Plus className="h-3 w-3" />
-                  新增分类
+                  Add Category
                 </button>
               </div>
             </div>
@@ -311,7 +372,7 @@ function QuestionBankInner() {
                       if (categoryFilter === cat.id) setCategoryFilter('all');
                     }}
                     className="rounded p-1 text-[#848494] hover:bg-rose-50 hover:text-rose-600"
-                    title="删除分类"
+                    title="Delete category"
                   >
                     <Trash2 className="h-3 w-3" />
                   </button>
@@ -363,40 +424,43 @@ function QuestionBankInner() {
           onChange={(e) => setStatusFilter(e.target.value as QuestionStatus | 'all')}
           className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-2 text-xs focus:outline-none"
         >
-          <option value="all">Any Mastery Status</option>
+          <option value="all">Any Mastery</option>
           <option value="unpracticed">Unpracticed</option>
           <option value="needs_drill">Needs Drill</option>
           <option value="mastered">Mastered</option>
         </select>
       </div>
 
-      {/* Question Cards */}
-      <div className="space-y-3.5">
+      {/* Slim Linear-Style Question Cards */}
+      <div className="space-y-3">
         {filteredQuestions.length === 0 ? (
           <div className="rounded-2xl border border-[#ECECF2] bg-white p-10 text-center text-sm text-[#848494]">
-            No questions match your current filters. Clear search or add a custom question!
+            No questions match your current filters. Clear filters or add a custom question.
           </div>
         ) : (
           filteredQuestions.map((q) => {
-            const expanded = Boolean(expandedIds[q.id]);
+            const rubricOpen = Boolean(expandedRubrics[q.id]);
+            const answerOpen = Boolean(expandedAnswers[q.id]);
             const progress = state.questionProgress[q.id];
             const status = progress?.status ?? 'unpracticed';
             const roleCfg = ROLES_BY_ID[q.role];
             const notes = state.questionNotes[q.id];
-            const hasModel = Boolean(notes?.modelAnswer?.trim() || q.modelAnswer?.trim());
+            const modelText = (notes?.modelAnswer || q.modelAnswer || '').trim();
+            const modelHtml = notes?.modelAnswerHtml?.trim();
+            const hasModel = Boolean(modelText || modelHtml);
             const hasMy = Boolean(notes?.myAnswer?.trim());
             const hasVideo = Boolean(notes?.videoUrl?.trim() || notes?.localMediaId || q.videoUrl);
-            const hasLark = Boolean(notes?.sourceUrl || q.sourceUrl);
-            const subCount = notes?.customBlocks?.length ?? 0;
+            const catMeta = getCategoryMeta(inferQuestionCategory(q), categoriesList);
 
             return (
               <article
                 key={q.id}
-                className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-[0_1px_2px_rgba(16,16,24,0.03)] transition hover:border-[#D4C5FD]"
+                className="rounded-2xl border border-[#ECECF2] bg-white p-4.5 shadow-2xs transition hover:border-[#D4C5FD]"
               >
-                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    {/* Compact Metadata Row */}
+                    <div className="flex flex-wrap items-center gap-2">
                       <span
                         className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${roleBadgeClasses(
                           q.role
@@ -404,197 +468,158 @@ function QuestionBankInner() {
                       >
                         {roleCfg.shortLabel}
                       </span>
-                      {q.secondaryRoles.map((sr) => (
-                        <span
-                          key={sr}
-                          className="rounded-md border border-[#ECECF2] bg-[#FAFAFC] px-1.5 py-0.5 text-[10px] font-medium text-[#525260]"
-                        >
-                          +{ROLES_BY_ID[sr].shortLabel}
-                        </span>
-                      ))}
-                      {(() => {
-                        const catMeta = getCategoryMeta(inferQuestionCategory(q), categoriesList);
-                        return (
-                          <span
-                            className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${catMeta.badgeClass}`}
-                          >
-                            {catMeta.shortLabel}
-                          </span>
-                        );
-                      })()}
-                      <span className="rounded-md bg-[#FAFAFC] px-2 py-0.5 text-[11px] text-[#525260]">
-                        {ROUND_LABELS[q.round].en}
+                      <span className="text-[11px] font-medium text-[#6C6C7D]">
+                        {catMeta.shortLabel} · {ROUND_LABELS[q.round].en}
                       </span>
                       <span className="inline-flex items-center gap-1 text-[11px] text-[#848494]">
                         <Clock className="h-3 w-3" />
                         {q.timeLimitMin}m · {q.difficulty.toUpperCase()} · {q.companyStyle}
                       </span>
-                      {hasModel && (
-                        <span className="inline-flex items-center gap-1 rounded bg-[#F3ECFF] px-1.5 py-0.5 text-[10px] font-medium text-[#6E32F5]">
-                          <BookOpen className="h-2.5 w-2.5" />
-                          Model Answer
-                        </span>
-                      )}
-                      {hasMy && (
-                        <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
-                          <FileText className="h-2.5 w-2.5" />
-                          My Answer
-                        </span>
-                      )}
-                      {hasVideo && (
-                        <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
-                          <Video className="h-2.5 w-2.5" />
-                          Video
-                        </span>
-                      )}
-                      {subCount > 0 && (
-                        <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
-                          +{subCount} blocks
-                        </span>
-                      )}
-                      {hasLark && (
-                        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
-                          Lark
-                        </span>
-                      )}
                       {status === 'mastered' && (
-                        <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
                           <CheckCircle2 className="h-3 w-3" />
                           Mastered {progress?.bestScore ? `(${progress.bestScore}★)` : ''}
                         </span>
                       )}
                       {status === 'needs_drill' && (
-                        <span className="rounded bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
                           Needs Drill {progress?.bestScore ? `(${progress.bestScore}★)` : ''}
+                        </span>
+                      )}
+
+                      {(hasModel || hasMy || hasVideo) && (
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-[#848494]">
+                          {hasModel && (
+                            <span className="inline-flex items-center gap-0.5 rounded bg-[#F5F5FA] px-1.5 py-0.5 text-[#525260]">
+                              <BookOpen className="h-2.5 w-2.5" />
+                              Model
+                            </span>
+                          )}
+                          {hasMy && (
+                            <span className="inline-flex items-center gap-0.5 rounded bg-[#F5F5FA] px-1.5 py-0.5 text-[#525260]">
+                              <FileText className="h-2.5 w-2.5" />
+                              My Note
+                            </span>
+                          )}
+                          {hasVideo && (
+                            <span className="inline-flex items-center gap-0.5 rounded bg-[#F5F5FA] px-1.5 py-0.5 text-[#525260]">
+                              <Video className="h-2.5 w-2.5" />
+                              Video
+                            </span>
+                          )}
                         </span>
                       )}
                     </div>
 
                     <Link
                       href={`/questions/${q.id}`}
-                      className="block text-base font-semibold text-[#111118] hover:text-[#6E32F5]"
+                      className="block text-[15px] font-semibold leading-snug text-[#111118] hover:text-[#6E32F5]"
                     >
                       {q.title}
                     </Link>
+
                     <p
-                      className={`whitespace-pre-wrap text-[13px] leading-relaxed text-[#525260] ${
-                        !expandedAnswers[q.id] && q.prompt.length > 220 ? 'line-clamp-3' : ''
+                      className={`whitespace-pre-wrap text-xs leading-relaxed text-[#525260] ${
+                        answerOpen ? '' : 'line-clamp-2'
                       }`}
                     >
                       {q.prompt}
                     </p>
-                    {state.aiSettings.language !== 'en' && (
-                      <p className="rounded-lg bg-amber-50/70 px-3 py-1.5 text-xs text-amber-950">
+
+                    {state.aiSettings.language !== 'en' && q.promptZhHint && (
+                      <p className="rounded-lg bg-amber-50/70 px-2.5 py-1 text-[11px] text-amber-950">
                         {q.promptZhHint}
                       </p>
                     )}
                   </div>
 
-                  <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-col sm:items-end">
+                  {/* Restrained Action Group */}
+                  <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                    {hasModel && (
+                      <button
+                        type="button"
+                        onClick={() => toggleAnswerPreview(q.id)}
+                        className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
+                          answerOpen
+                            ? 'border-[#6E32F5] bg-[#F4EFFF] text-[#5D26D9]'
+                            : 'border-[#ECECF2] bg-white text-[#525260] hover:text-[#111118]'
+                        }`}
+                      >
+                        {answerOpen ? 'Hide Answer' : 'Preview'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => toggleRubric(q.id)}
+                      className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
+                        rubricOpen
+                          ? 'border-[#111118] bg-[#111118] text-white'
+                          : 'border-[#ECECF2] bg-white text-[#525260] hover:text-[#111118]'
+                      }`}
+                    >
+                      Rubric
+                      {rubricOpen ? (
+                        <ChevronUp className="h-3 w-3" />
+                      ) : (
+                        <ChevronDown className="h-3 w-3" />
+                      )}
+                    </button>
                     <Link
                       href={`/questions/${q.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-[#6E32F5] px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-95"
+                      className="inline-flex items-center gap-1 rounded-lg border border-[#D4C5FD] bg-[#F9F6FF] px-3 py-1.5 text-xs font-semibold text-[#5D26D9] transition hover:bg-[#F3ECFF]"
                     >
-                      <BookOpen className="h-3.5 w-3.5" />
-                      Study &amp; Edit Answer
+                      Study
                     </Link>
                     <Link
                       href={`/practice/${q.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-3.5 py-1.5 text-xs font-semibold text-[#111118] transition hover:border-[#6E32F5] hover:text-[#6E32F5]"
+                      className="inline-flex items-center gap-1 rounded-lg bg-[#111118] px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
                     >
                       <Play className="h-3 w-3" />
-                      Enter Mock Room
+                      Mock
                     </Link>
-                    <div className="flex items-center gap-1.5">
+                    {q.isCustom && (
                       <button
                         type="button"
-                        onClick={() => toggleExpand(q.id)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-[#ECECF2] px-2.5 py-1 text-[11px] font-medium text-[#525260] hover:bg-[#FAFAFC]"
+                        onClick={() => handleDeleteCustom(q)}
+                        className="rounded-lg border border-[#ECECF2] p-1.5 text-[#848494] hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                        title="Delete custom question"
                       >
-                        {expanded ? (
-                          <>
-                            Hide <ChevronUp className="h-3 w-3" />
-                          </>
-                        ) : (
-                          <>
-                            Rubric <ChevronDown className="h-3 w-3" />
-                          </>
-                        )}
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
-                      {q.isCustom && (
-                        <button
-                          type="button"
-                          onClick={() => deleteCustomQuestion(q.id)}
-                          className="rounded-lg border border-[#ECECF2] p-1.5 text-[#848494] hover:border-rose-200 hover:text-rose-600"
-                          title="Delete custom question"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Full-Width Model Answer Box (Wider Reading Layout) */}
-                {(() => {
-                  const showAll = Boolean(expandedAnswers[q.id]);
-                  const modelText = (notes?.modelAnswer || q.modelAnswer || '').trim();
-                  const modelHtml = notes?.modelAnswerHtml?.trim();
-                  const isLong = q.prompt.length > 220 || modelText.length > 0;
-                  if (!modelText && !isLong) return null;
-                  return (
-                    <div className="mt-3 space-y-2">
-                      {(modelText || modelHtml) && (
-                        <div className="w-full rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-4 py-3">
-                          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#6E32F5]">
-                            Model / Reference Answer
-                          </div>
-                          {modelHtml ? (
-                            <div
-                              className={`text-xs leading-relaxed text-[#2E2E3A] [&>p]:mb-1.5 ${
-                                !showAll ? 'line-clamp-4' : ''
-                              }`}
-                              dangerouslySetInnerHTML={{ __html: modelHtml }}
-                            />
-                          ) : (
-                            <p
-                              className={`whitespace-pre-wrap text-xs leading-relaxed text-[#2E2E3A] ${
-                                !showAll ? 'line-clamp-4' : ''
-                              }`}
-                            >
-                              {modelText}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                      {isLong && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedAnswers((prev) => ({
-                              ...prev,
-                              [q.id]: !prev[q.id],
-                            }))
-                          }
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-[#6E32F5] hover:underline"
-                        >
-                          {showAll ? (
-                            <>
-                              Collapse (收起) <ChevronUp className="h-3.5 w-3.5" />
-                            </>
-                          ) : (
-                            <>
-                              Show All (展开完整回答) <ChevronDown className="h-3.5 w-3.5" />
-                            </>
-                          )}
-                        </button>
-                      )}
+                {/* On-Demand Model Answer Preview */}
+                {answerOpen && hasModel && (
+                  <div className="mt-3 rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-4 py-3">
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#6E32F5]">
+                        Reference Answer Preview
+                      </span>
+                      <Link
+                        href={`/questions/${q.id}`}
+                        className="text-[11px] font-semibold text-[#6E32F5] hover:underline"
+                      >
+                        Open Full Answer Studio →
+                      </Link>
                     </div>
-                  );
-                })()}
+                    {modelHtml ? (
+                      <div
+                        className="text-xs leading-relaxed text-[#2E2E3A] [&>p]:mb-1.5"
+                        dangerouslySetInnerHTML={{ __html: modelHtml }}
+                      />
+                    ) : (
+                      <p className="whitespace-pre-wrap text-xs leading-relaxed text-[#2E2E3A]">
+                        {modelText}
+                      </p>
+                    )}
+                  </div>
+                )}
 
-                {expanded && (
-                  <div className="mt-4 grid gap-4 border-t border-[#ECECF2] pt-4 md:grid-cols-3">
+                {/* On-Demand Rubric Breakdown */}
+                {rubricOpen && (
+                  <div className="mt-3.5 grid gap-4 border-t border-[#ECECF2] pt-3.5 md:grid-cols-3">
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-[#848494]">
                         Step-by-Step Framework
@@ -661,7 +686,7 @@ function QuestionBankInner() {
         }}
         initialQuestion={editingQuestion}
         initialNotes={editingQuestion ? state.questionNotes[editingQuestion.id] : undefined}
-        defaultRole="fde"
+        defaultRole={roleFilter === 'all' ? 'fde' : roleFilter}
         onSave={(savedQ, initialNotes) => {
           if (editingQuestion) {
             updateCustomQuestion(savedQ);

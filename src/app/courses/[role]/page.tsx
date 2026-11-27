@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -10,8 +10,10 @@ import {
   ArrowUp,
   BookOpen,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Clock,
   Edit3,
   ExternalLink,
   FileText,
@@ -21,7 +23,6 @@ import {
   Loader2,
   Play,
   Plus,
-  Rocket,
   Save,
   Sparkles,
   Trash2,
@@ -31,7 +32,7 @@ import {
 import { useApp } from '@/components/AppProvider';
 import { TypographyPicker } from '@/components/TypographyPicker';
 import { VideoPlayer } from '@/components/VideoPlayer';
-import { roleBadgeClasses } from '@/lib/helpers';
+import { getQuestionById, getQuestionStatus, roleBadgeClasses } from '@/lib/helpers';
 import {
   cleanHtmlForReader,
   extractReadableTextFromHtml,
@@ -39,7 +40,7 @@ import {
 } from '@/lib/html-parser';
 import { getHtmlSnapshot, saveHtmlSnapshot } from '@/lib/html-snapshot-db';
 import { saveLocalMedia } from '@/lib/media-db';
-import { ROLES_BY_ID } from '@/lib/roles';
+import { ROLES_BY_ID, ROUND_LABELS } from '@/lib/roles';
 import { SELF_INTRO_COURSE_META } from '@/lib/seed-courses';
 import {
   DEFAULT_MODULE_STYLE,
@@ -81,17 +82,17 @@ function CourseSyllabusContent() {
 
   const [editMode, setEditMode] = useState(false);
   const [collapsedSubs, setCollapsedSubs] = useState<Record<string, boolean>>({});
-  const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
-  const [expandedSnapshotHtml, setExpandedSnapshotHtml] = useState<string | null>(null);
-  const [editingInlineLessonId, setEditingInlineLessonId] = useState<string | null>(null);
+  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
+  const [snapshotHtml, setSnapshotHtml] = useState<string | null>(null);
+  const [editingInlineArticle, setEditingInlineArticle] = useState(false);
   const [inlineNotice, setInlineNotice] = useState('');
   const [inlineVideoTitle, setInlineVideoTitle] = useState('');
   const [inlineVideoNote, setInlineVideoNote] = useState('');
   const [inlineVideoUrl, setInlineVideoUrl] = useState('');
   const [inlineUploading, setInlineUploading] = useState(false);
-  const inlineIframeRef = React.useRef<HTMLIFrameElement | null>(null);
+  const inlineIframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  // Module-level Quick Standalone Video Lesson Creator
+  // Module-level Quick Standalone Video Lesson Creator (Edit Mode)
   const [quickVideoModId, setQuickVideoModId] = useState<string | null>(null);
   const [qvTitle, setQvTitle] = useState('');
   const [qvNote, setQvNote] = useState('');
@@ -131,25 +132,74 @@ function CourseSyllabusContent() {
     return map;
   }, [state.deployedHtmlPages]);
 
-  useEffect(() => {
-    if (!expandedLessonId) {
-      setExpandedSnapshotHtml(null);
-      return;
+  const flatLessons = useMemo(() => {
+    if (!course) return [];
+    const list: Array<{
+      lesson: CourseLessonItem;
+      moduleId: string;
+      moduleTitle: string;
+      subSectionId: string;
+      subSectionTitle: string;
+    }> = [];
+    course.modules.forEach((m) =>
+      m.subSections.forEach((s) =>
+        s.lessons.forEach((l) =>
+          list.push({
+            lesson: l,
+            moduleId: m.id,
+            moduleTitle: m.title,
+            subSectionId: s.id,
+            subSectionTitle: s.title,
+          })
+        )
+      )
+    );
+    return list;
+  }, [course]);
+
+  // Determine active entry safely without synchronous setState inside render
+  const defaultLessonEntry = useMemo(() => {
+    if (flatLessons.length === 0) return null;
+    return flatLessons.find((x) => !x.lesson.completed) ?? flatLessons[0];
+  }, [flatLessons]);
+
+  const activeEntry = useMemo(() => {
+    if (flatLessons.length === 0) return null;
+    if (selectedLessonId) {
+      const found = flatLessons.find((x) => x.lesson.id === selectedLessonId);
+      if (found) return found;
     }
-    const foundLesson = course.modules
-      .flatMap((m) => m.subSections.flatMap((s) => s.lessons))
-      .find((l) => l.id === expandedLessonId);
-    const pageId = foundLesson?.htmlPageId;
+    return defaultLessonEntry;
+  }, [flatLessons, selectedLessonId, defaultLessonEntry]);
+
+  // Reset selected lesson when switching track
+  useEffect(() => {
+    setSelectedLessonId(null);
+    setEditingInlineArticle(false);
+    setInlineNotice('');
+  }, [role]);
+
+  const activeLesson = activeEntry?.lesson ?? null;
+  const activeHtmlPage = activeLesson?.htmlPageId
+    ? htmlPagesById.get(activeLesson.htmlPageId) ?? null
+    : null;
+
+  // Load persisted HTML snapshot for active HTML lesson
+  useEffect(() => {
+    const pageId = activeLesson?.htmlPageId;
+    setEditingInlineArticle(false);
+    setInlineNotice('');
     if (!pageId) {
-      setExpandedSnapshotHtml(null);
+      setSnapshotHtml(null);
       return;
     }
     const linkedPage = htmlPagesById.get(pageId);
     let cancelled = false;
+    setSnapshotHtml(null);
     void getHtmlSnapshot(pageId).then(async (snap) => {
       if (cancelled) return;
       if (snap) {
-        setExpandedSnapshotHtml(snap);
+        setSnapshotHtml(snap);
         return;
       }
       if (linkedPage?.htmlCloudUrl) {
@@ -158,35 +208,103 @@ function CourseSyllabusContent() {
           if (res.ok) {
             const remoteHtml = await res.text();
             if (!cancelled && remoteHtml) {
-              setExpandedSnapshotHtml(remoteHtml);
+              setSnapshotHtml(remoteHtml);
               void saveHtmlSnapshot(pageId, remoteHtml);
             }
           }
         } catch {
-          // keep fallback rawHtml
+          // fallback to rawHtml
         }
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [expandedLessonId, course.modules, htmlPagesById]);
+  }, [activeLesson?.id, activeLesson?.htmlPageId, htmlPagesById]);
 
-  const flatLessons = useMemo(() => {
-    const list: Array<{
-      lesson: CourseLessonItem;
-      moduleId: string;
-      subSectionId: string;
-    }> = [];
+  const roleCfg =
+    role === 'self-intro'
+      ? {
+          id: 'self-intro' as const,
+          shortLabel: SELF_INTRO_COURSE_META.shortLabel,
+          label: SELF_INTRO_COURSE_META.label,
+          defaultScratchpadSections: [
+            'Present: Current Builder Identity (15s)',
+            'Past: 2 Quantified Proof Points (45s)',
+            'Future: Why This Company & Team (30s)',
+          ],
+        }
+      : ROLES_BY_ID[role];
+
+  const stats = useMemo(() => {
+    if (!course) return { total: 0, done: 0, pct: 0, videos: 0 };
+    let total = 0;
+    let done = 0;
+    let videos = 0;
     course.modules.forEach((m) =>
       m.subSections.forEach((s) =>
-        s.lessons.forEach((l) =>
-          list.push({ lesson: l, moduleId: m.id, subSectionId: s.id })
-        )
+        s.lessons.forEach((l) => {
+          total++;
+          if (l.completed) done++;
+          if (l.kind === 'video' || l.videoUrl || l.localMediaId) videos++;
+        })
       )
     );
-    return list;
-  }, [course.modules]);
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    return { total, done, pct, videos };
+  }, [course]);
+
+  const unlinkedCustomQuestions = useMemo(() => {
+    const linkedIds = new Set<string>();
+    course?.modules.forEach((m) =>
+      m.subSections.forEach((s) =>
+        s.lessons.forEach((l) => {
+          if (l.questionId) linkedIds.add(l.questionId);
+        })
+      )
+    );
+    return state.customQuestions.filter((q) => q.role === role && !linkedIds.has(q.id));
+  }, [course, state.customQuestions, role]);
+
+  if (!mounted || !course) {
+    return (
+      <div className="flex h-[65vh] items-center justify-center text-sm text-[#848494]">
+        Loading Course Syllabus...
+      </div>
+    );
+  }
+
+  const saveCourse = (next: CourseSyllabus) => {
+    updateCourseSyllabus(role, next);
+  };
+
+  const handleToggleEditMode = () => {
+    if (editMode) {
+      saveCourse({ ...course, published: true });
+      setEditMode(false);
+    } else {
+      setEditMode(true);
+    }
+  };
+
+  const selectLesson = (lessonId: string, subSectionId?: string) => {
+    if (subSectionId) {
+      setCollapsedSubs((prev) => ({ ...prev, [subSectionId]: false }));
+    }
+    setSelectedLessonId(lessonId);
+    setEditingInlineArticle(false);
+  };
+
+  const handleContinueLearning = () => {
+    const target = defaultLessonEntry;
+    if (!target) return;
+    selectLesson(target.lesson.id, target.subSectionId);
+    window.setTimeout(() => {
+      document
+        .getElementById('course-reader-stage')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
 
   const reorderModules = (fromId: string, toId: string) => {
     if (fromId === toId) return;
@@ -255,7 +373,7 @@ function CourseSyllabusContent() {
           .split('\n')
           .map((line) => line.replace(/</g, '&lt;').replace(/>/g, '&gt;'))
           .join('</p><p>')}</p>`
-      : '<p>配套视频课程笔记与重点拆解，可点击「编辑正文」随时补充。</p>';
+      : '<p>Video walkthrough notes. Click Edit Article to expand.</p>';
     const rawHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${qvTitle.trim()}</title></head><body><article><h1>${qvTitle.trim()}</h1>${noteHtml}</article></body></html>`;
 
     const deployed = deployHtmlPage({
@@ -279,7 +397,7 @@ function CourseSyllabusContent() {
       videoUrl: qvVideoUrl.trim() || undefined,
       localMediaId: qvLocalMediaId,
       localMediaName: qvLocalMediaName,
-      summary: qvNote.trim() || '视频课程讲解',
+      summary: qvNote.trim() || 'Video lesson walkthrough',
       published: true,
     };
 
@@ -304,7 +422,7 @@ function CourseSyllabusContent() {
     setQvVideoUrl('');
     setQvLocalMediaId(undefined);
     setQvLocalMediaName(undefined);
-    setExpandedLessonId(newLesson.id);
+    setSelectedLessonId(newLesson.id);
   };
 
   const handleInlineUploadVideo = async (
@@ -326,7 +444,7 @@ function CourseSyllabusContent() {
           localMediaId: saved.id,
           localMediaName: saved.name,
         });
-        setInlineNotice(`已挂载本地视频「${saved.name}」到本课顶部播放器！`);
+        setInlineNotice(`Attached local video "${saved.name}" to lesson header.`);
       }
     } finally {
       setInlineUploading(false);
@@ -338,7 +456,7 @@ function CourseSyllabusContent() {
     if (!doc) return;
     const rawUrl = inlineVideoUrl.trim();
     if (!rawUrl) {
-      setInlineNotice('请先粘贴 YouTube 链接或上传 MP4 视频');
+      setInlineNotice('Paste a YouTube URL or upload an MP4 first.');
       return;
     }
 
@@ -393,15 +511,14 @@ function CourseSyllabusContent() {
     setInlineVideoTitle('');
     setInlineVideoNote('');
     setInlineVideoUrl('');
-    setInlineNotice('已将视频块插入到文章内！请点击「保存修改」持久化。');
-    // Keep pageId referenced cleanly
+    setInlineNotice('Video block inserted into article. Click Save Changes to persist.');
     void pageId;
   };
 
   const handleSaveInlineArticle = (pageId: string, fallbackRawHtml: string) => {
     const doc = inlineIframeRef.current?.contentDocument;
     if (!doc) {
-      setEditingInlineLessonId(null);
+      setEditingInlineArticle(false);
       return;
     }
     doc.querySelectorAll('[data-bl-editable]').forEach((el) => {
@@ -415,89 +532,10 @@ function CourseSyllabusContent() {
       rawHtml: updatedHtml,
       extractedText: extracted.text,
     });
-    setExpandedSnapshotHtml(updatedHtml);
-    setEditingInlineLessonId(null);
-    setInlineNotice('已保存正文与视频修改！');
+    setSnapshotHtml(updatedHtml);
+    setEditingInlineArticle(false);
+    setInlineNotice('Article & video changes saved.');
     window.setTimeout(() => setInlineNotice(''), 2500);
-  };
-
-  const jumpToLesson = (item: {
-    lesson: CourseLessonItem;
-    moduleId: string;
-    subSectionId: string;
-  }) => {
-    setCollapsedSubs((prev) => ({ ...prev, [item.subSectionId]: false }));
-    setExpandedLessonId(item.lesson.id);
-    window.setTimeout(() => {
-      document
-        .getElementById(`course-lesson-${item.lesson.id}`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 60);
-  };
-  const roleCfg =
-    role === 'self-intro'
-      ? {
-          id: 'self-intro' as const,
-          shortLabel: SELF_INTRO_COURSE_META.shortLabel,
-          label: SELF_INTRO_COURSE_META.label,
-          defaultScratchpadSections: [
-            'Present: Current Builder Identity (15s)',
-            'Past: 2 Quantified Proof Points (45s)',
-            'Future: Why This Company & Team (30s)',
-          ],
-        }
-      : ROLES_BY_ID[role];
-
-  const stats = useMemo(() => {
-    if (!course) return { total: 0, done: 0, pct: 0, videos: 0 };
-    let total = 0;
-    let done = 0;
-    let videos = 0;
-    course.modules.forEach((m) =>
-      m.subSections.forEach((s) =>
-        s.lessons.forEach((l) => {
-          total++;
-          if (l.completed) done++;
-          if (l.kind === 'video' || l.videoUrl || l.localMediaId) videos++;
-        })
-      )
-    );
-    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-    return { total, done, pct, videos };
-  }, [course]);
-
-  // Custom or Lark-imported questions for this role not yet manually placed inside a module
-  const unlinkedCustomQuestions = useMemo(() => {
-    const linkedIds = new Set<string>();
-    course?.modules.forEach((m) =>
-      m.subSections.forEach((s) =>
-        s.lessons.forEach((l) => {
-          if (l.questionId) linkedIds.add(l.questionId);
-        })
-      )
-    );
-    return state.customQuestions.filter((q) => q.role === role && !linkedIds.has(q.id));
-  }, [course, state.customQuestions, role]);
-
-  if (!mounted || !course) {
-    return (
-      <div className="flex h-[65vh] items-center justify-center text-sm text-[#848494]">
-        Loading Course Syllabus...
-      </div>
-    );
-  }
-
-  const saveCourse = (next: CourseSyllabus) => {
-    updateCourseSyllabus(role, next);
-  };
-
-  const handleTogglePublish = () => {
-    if (editMode) {
-      saveCourse({ ...course, published: true });
-      setEditMode(false);
-    } else {
-      setEditMode(true);
-    }
   };
 
   const handleIntroVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -539,7 +577,7 @@ function CourseSyllabusContent() {
     const newMod: CourseModuleSection = {
       id: `${role}-mod-${Date.now()}`,
       title: `New Section (${course.modules.length + 1})`,
-      description: 'Describe what this big module covers for your interview prep.',
+      description: 'Describe what this section covers for interview prep.',
       titleStyle: DEFAULT_MODULE_STYLE,
       subSections: [
         {
@@ -559,7 +597,7 @@ function CourseSyllabusContent() {
   const handleAddSubSection = (moduleId: string) => {
     const newSub: CourseSubSection = {
       id: `${role}-sub-${Date.now()}`,
-      title: 'New Sub-Section (小节标题)',
+      title: 'New Sub-Section',
       titleStyle: DEFAULT_SUBSECTION_STYLE,
       lessons: [],
     };
@@ -584,10 +622,10 @@ function CourseSyllabusContent() {
       round: 'decomposition',
       difficulty: 'senior',
       timeLimitMin: 30,
-      companyStyle: `${roleCfg.shortLabel} Course Custom`,
+      companyStyle: `${roleCfg.shortLabel} Course`,
       title: newLessonTitle.trim(),
       prompt: newLessonPrompt.trim() || newLessonTitle.trim(),
-      promptZhHint: `【课程内自定义题目】${roleCfg.shortLabel} 专属精研题目`,
+      promptZhHint: `${roleCfg.shortLabel} custom course prompt`,
       frameworkSteps: roleCfg.defaultScratchpadSections,
       strongHireSignals: ['Clear structure, quantified trade-offs, and ownership.'],
       redFlags: ['Generic unstructured answers.'],
@@ -646,6 +684,7 @@ function CourseSyllabusContent() {
     setNewLessonVideoUrl('');
     setNewLessonLocalMediaId(undefined);
     setNewLessonLocalMediaName(undefined);
+    setSelectedLessonId(newLesson.id);
   };
 
   const moveModule = (idx: number, dir: -1 | 1) => {
@@ -657,67 +696,77 @@ function CourseSyllabusContent() {
     saveCourse({ ...course, modules: copy });
   };
 
-  const firstQuestionLesson = course.modules
-    .flatMap((m) => m.subSections.flatMap((s) => s.lessons))
-    .find((l) => l.questionId);
+  const hasIntroVideo = Boolean(course.introVideoUrl || course.introLocalMediaId);
+  const activeFlatIdx = activeEntry
+    ? flatLessons.findIndex((x) => x.lesson.id === activeEntry.lesson.id)
+    : -1;
+  const prevEntry = activeFlatIdx > 0 ? flatLessons[activeFlatIdx - 1] : null;
+  const nextEntry =
+    activeFlatIdx >= 0 && activeFlatIdx < flatLessons.length - 1
+      ? flatLessons[activeFlatIdx + 1]
+      : null;
+
+  const activeQuestion = activeLesson?.questionId
+    ? getQuestionById(state, activeLesson.questionId)
+    : undefined;
+  const activeQuestionNotes = activeQuestion
+    ? state.questionNotes[activeQuestion.id]
+    : undefined;
+  const activeQuestionStatus = activeQuestion
+    ? getQuestionStatus(state, activeQuestion.id)
+    : undefined;
 
   return (
     <div className="space-y-6">
-      {/* Top Breadcrumb + Edit / Publish Bar */}
+      {/* Top Breadcrumb + Mode Toggle */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs text-[#848494]">
-          <Link href="/courses" className="hover:text-[#111118]">
+          <Link href="/courses" className="inline-flex items-center gap-1 hover:text-[#111118]">
+            <ArrowLeft className="h-3.5 w-3.5" />
             Courses
           </Link>
-          <span>›</span>
+          <span>/</span>
           <span className="font-medium text-[#111118]">{course.heroTitle}</span>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <span
-            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-              editMode
-                ? 'bg-amber-50 text-amber-800'
-                : 'bg-emerald-50 text-emerald-700'
-            }`}
-          >
-            {editMode ? 'Editing Draft' : 'Published View'}
-          </span>
-
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={handleTogglePublish}
-            className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+            onClick={handleToggleEditMode}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
               editMode
-                ? 'bg-[#6E32F5] text-white shadow-xs hover:opacity-95'
-                : 'border border-[#ECECF2] bg-white text-[#111118] hover:border-[#6E32F5] hover:text-[#6E32F5]'
+                ? 'bg-[#111118] text-white shadow-xs hover:opacity-90'
+                : 'border border-[#ECECF2] bg-white text-[#525260] hover:border-[#6E32F5] hover:text-[#111118]'
             }`}
           >
             {editMode ? (
               <>
-                <Rocket className="h-3.5 w-3.5" />
-                Publish Changes (发布)
+                <Check className="h-3.5 w-3.5" />
+                Done Editing
               </>
             ) : (
               <>
                 <Edit3 className="h-3.5 w-3.5" />
-                Edit Page (编辑排版与内容)
+                Edit Syllabus
               </>
             )}
           </button>
         </div>
       </div>
 
-      {/* Aced.io Course Hero Card (Screenshot 3) */}
-      <section className="rounded-3xl border border-[#ECECF2] bg-white p-6 shadow-[0_1px_2px_rgba(16,16,24,0.03)] sm:p-8">
-        <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-12">
-          {/* Left Hero Details */}
-          <div className="space-y-4 lg:col-span-7">
+      {/* Compact Course Hero */}
+      <section className="rounded-2xl border border-[#ECECF2] bg-white p-6 shadow-[0_1px_2px_rgba(16,16,24,0.03)]">
+        <div
+          className={`grid grid-cols-1 gap-6 ${
+            hasIntroVideo || editMode ? 'lg:grid-cols-12 lg:items-center' : ''
+          }`}
+        >
+          <div className={hasIntroVideo || editMode ? 'space-y-3.5 lg:col-span-7' : 'space-y-3.5'}>
             {editMode ? (
               <div className="space-y-3 rounded-2xl border border-[#D4C5FD] bg-[#FAF9FF] p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-[#6E32F5]">
-                    Hero Big Title (大标题)
+                    Track Title &amp; Overview
                   </span>
                   <TypographyPicker
                     value={course.heroTitleStyle}
@@ -733,11 +782,12 @@ function CourseSyllabusContent() {
                   <input
                     value={course.editionBadge}
                     onChange={(e) => saveCourse({ ...course, editionBadge: e.target.value })}
-                    className="w-32 rounded-xl border border-[#ECECF2] bg-white px-3 py-2 text-xs font-semibold focus:border-[#6E32F5] focus:outline-none"
+                    placeholder="Edition badge"
+                    className="w-36 rounded-xl border border-[#ECECF2] bg-white px-3 py-2 text-xs font-semibold focus:border-[#6E32F5] focus:outline-none"
                   />
                 </div>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={course.heroSubtitle}
                   onChange={(e) => saveCourse({ ...course, heroSubtitle: e.target.value })}
                   className="w-full rounded-xl border border-[#ECECF2] bg-white p-3 text-xs leading-relaxed focus:border-[#6E32F5] focus:outline-none"
@@ -755,437 +805,143 @@ function CourseSyllabusContent() {
                   >
                     {course.heroTitle}
                   </h1>
+                  {course.editionBadge && (
+                    <span className="rounded-full bg-[#F4EFFF] px-2.5 py-0.5 text-[11px] font-semibold text-[#5D26D9]">
+                      {course.editionBadge}
+                    </span>
+                  )}
                 </div>
-                <p className="text-sm leading-relaxed text-[#525260]">{course.heroSubtitle}</p>
+                <p className="max-w-3xl text-sm leading-relaxed text-[#525260]">
+                  {course.heroSubtitle}
+                </p>
               </>
             )}
 
-            <ul className="space-y-2 pt-1">
-              {course.highlights.map((hl, idx) => (
-                <li key={idx} className="flex items-center gap-2.5 text-[13px] text-[#2E2E3A]">
-                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-[#6E32F5]" />
-                  <span>{hl}</span>
-                </li>
-              ))}
-            </ul>
+            {course.highlights.length > 0 && !editMode && (
+              <div className="flex flex-wrap gap-x-5 gap-y-1.5 pt-0.5">
+                {course.highlights.map((hl, idx) => (
+                  <div key={idx} className="flex items-center gap-1.5 text-xs text-[#3E3E4C]">
+                    <Sparkles className="h-3.5 w-3.5 shrink-0 text-[#6E32F5]" />
+                    <span>{hl}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
-            <div className="flex flex-wrap items-center gap-4 pt-2">
-              <Link
-                href={
-                  firstQuestionLesson?.questionId
-                    ? `/questions/${firstQuestionLesson.questionId}`
-                    : '/questions'
-                }
-                className="inline-flex items-center gap-2 rounded-xl bg-[#6E32F5] px-5 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:opacity-95"
-              >
-                Continue learning
-              </Link>
-              <div className="flex items-center gap-2 text-xs font-medium text-[#525260]">
-                <BookOpen className="h-4 w-4 text-[#848494]" />
-                <span>
-                  {stats.done}/{stats.total} lessons completed ({stats.pct}%)
+            <div className="flex flex-wrap items-center gap-4 pt-1">
+              {!editMode && flatLessons.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleContinueLearning}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#6E32F5] px-4 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-[#5B24D6]"
+                >
+                  <Play className="h-3.5 w-3.5 fill-white" />
+                  {stats.done > 0 && stats.done < stats.total
+                    ? 'Continue Learning'
+                    : 'Start Course'}
+                </button>
+              )}
+
+              <div className="flex min-w-[200px] flex-1 max-w-xs items-center gap-3">
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#F0F0F5]">
+                  <div
+                    className="h-full rounded-full bg-[#6E32F5] transition-all"
+                    style={{ width: `${stats.pct}%` }}
+                  />
+                </div>
+                <span className="shrink-0 font-mono text-xs font-medium text-[#525260]">
+                  {stats.done}/{stats.total} ({stats.pct}%)
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Right Hero Video Preview */}
-          <div className="lg:col-span-5">
-            {course.introVideoUrl || course.introLocalMediaId ? (
-              <VideoPlayer
-                videoUrl={course.introVideoUrl}
-                localMediaId={course.introLocalMediaId}
-                localMediaName={course.introLocalMediaName}
-              />
-            ) : (
-              <div className="relative flex aspect-video flex-col items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-[#1C1A29] via-[#27213F] to-[#171622] p-6 text-center text-white shadow-sm">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#6E32F5] shadow-lg">
-                  <Play className="ml-0.5 h-5 w-5 fill-white" />
-                </div>
-                <div className="mt-3 text-xs font-semibold text-white/90">
-                  {roleCfg.shortLabel} Course Intro Video
-                </div>
-                <div className="mt-1 text-[11px] text-white/60">
-                  Click &ldquo;Edit Page&rdquo; to attach YouTube/Bilibili or upload your intro video
-                </div>
-              </div>
-            )}
-
-            {editMode && (
-              <div className="mt-3 space-y-2 rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-3">
-                <input
-                  value={course.introVideoUrl ?? ''}
-                  onChange={(e) => saveCourse({ ...course, introVideoUrl: e.target.value })}
-                  placeholder="Paste Intro Video URL (YouTube / Bilibili / Loom / Lark)..."
-                  className="w-full rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
+          {(hasIntroVideo || editMode) && (
+            <div className="space-y-2.5 lg:col-span-5">
+              {hasIntroVideo && (
+                <VideoPlayer
+                  videoUrl={course.introVideoUrl}
+                  localMediaId={course.introLocalMediaId}
+                  localMediaName={course.introLocalMediaName}
                 />
-                <label className="flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#D4C5FD] bg-white px-3 py-1.5 text-xs font-medium text-[#6E32F5]">
-                  {uploadingIntro ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Upload className="h-3.5 w-3.5" />
-                  )}
-                  {course.introLocalMediaName
-                    ? `Uploaded: ${course.introLocalMediaName}`
-                    : 'Upload Local Intro Video (.mp4 / .webm)'}
+              )}
+
+              {editMode && (
+                <div className="space-y-2 rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-3">
+                  <div className="text-[11px] font-semibold text-[#525260]">
+                    Course Intro Video (Optional)
+                  </div>
                   <input
-                    type="file"
-                    accept="video/*,audio/*"
-                    onChange={handleIntroVideoUpload}
-                    className="hidden"
+                    value={course.introVideoUrl ?? ''}
+                    onChange={(e) => saveCourse({ ...course, introVideoUrl: e.target.value })}
+                    placeholder="Paste YouTube / Bilibili / Loom / Lark URL..."
+                    className="w-full rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
                   />
-                </label>
-              </div>
-            )}
-          </div>
+                  <label className="flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#D4C5FD] bg-white px-3 py-1.5 text-xs font-medium text-[#6E32F5]">
+                    {uploadingIntro ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="h-3.5 w-3.5" />
+                    )}
+                    {course.introLocalMediaName
+                      ? `Uploaded: ${course.introLocalMediaName}`
+                      : 'Upload Local Intro Video (.mp4 / .webm)'}
+                    <input
+                      type="file"
+                      accept="video/*,audio/*"
+                      onChange={handleIntroVideoUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Stacked Module Cards (Aced.io Screenshots 4-6) */}
-      <div className="space-y-6">
-        {course.modules.map((mod, mIdx) => {
-          const modLessonCount = mod.subSections.reduce((s, sub) => s + sub.lessons.length, 0);
-          const modVideoCount = mod.subSections.reduce(
-            (s, sub) =>
-              s +
-              sub.lessons.filter((l) => l.kind === 'video' || l.videoUrl || l.localMediaId).length,
-            0
-          );
+      {/* Main Content Area: Calm Split Reader OR Full Syllabus Editor */}
+      {!editMode ? (
+        <div
+          id="course-reader-stage"
+          className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start"
+        >
+          {/* Left 4 Cols: Sticky Syllabus Outline */}
+          <aside className="space-y-3 lg:sticky lg:top-6 lg:col-span-4 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto lg:pr-1">
+            {course.modules.map((mod, mIdx) => {
+              const modLessons = mod.subSections.flatMap((s) => s.lessons);
+              const modDone = modLessons.filter((l) => l.completed).length;
 
-          return (
-            <section
-              key={mod.id}
-              onDragOver={(e) => {
-                if (!draggingModuleId || draggingModuleId === mod.id) return;
-                e.preventDefault();
-                setDragOverModuleId(mod.id);
-              }}
-              onDragLeave={() => {
-                if (dragOverModuleId === mod.id) setDragOverModuleId(null);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (draggingModuleId && draggingModuleId !== mod.id) {
-                  reorderModules(draggingModuleId, mod.id);
-                }
-                setDraggingModuleId(null);
-                setDragOverModuleId(null);
-              }}
-              data-testid={`course-module-card-${mod.id}`}
-              className={`rounded-3xl border bg-white p-6 shadow-[0_1px_2px_rgba(16,16,24,0.03)] transition sm:p-7 ${
-                dragOverModuleId === mod.id
-                  ? 'border-[#6E32F5] ring-2 ring-[#6E32F5]/25'
-                  : 'border-[#ECECF2]'
-              }`}
-            >
-              {/* Module Big Title Header */}
-              <div
-                draggable={!editMode && !expandedLessonId}
-                onDragStart={(e) => {
-                  if (editMode || expandedLessonId) return;
-                  setDraggingModuleId(mod.id);
-                  e.dataTransfer.effectAllowed = 'move';
-                  e.dataTransfer.setData('text/plain', `mod:${mod.id}`);
-                }}
-                onDragEnd={() => {
-                  setDraggingModuleId(null);
-                  setDragOverModuleId(null);
-                }}
-                data-testid={`course-module-drag-handle-${mod.id}`}
-                className="flex flex-wrap items-start justify-between gap-3"
-              >
-                <div className="min-w-0 flex-1">
-                  {editMode ? (
-                    <div className="space-y-2.5 rounded-2xl border border-[#D4C5FD] bg-[#FAF9FF] p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-[#6E32F5]">
-                          Big Section #{mIdx + 1} (大标题)
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <TypographyPicker
-                            value={mod.titleStyle}
-                            onChange={(st) =>
-                              saveCourse({
-                                ...course,
-                                modules: course.modules.map((m) =>
-                                  m.id === mod.id ? { ...m, titleStyle: st } : m
-                                ),
-                              })
-                            }
-                          />
-                          <button
-                            type="button"
-                            onClick={() => moveModule(mIdx, -1)}
-                            className="rounded border border-[#ECECF2] bg-white p-1 text-[#525260] hover:text-[#111118]"
-                            title="Move up"
-                          >
-                            <ArrowUp className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => moveModule(mIdx, 1)}
-                            className="rounded border border-[#ECECF2] bg-white p-1 text-[#525260] hover:text-[#111118]"
-                            title="Move down"
-                          >
-                            <ArrowDown className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              saveCourse({
-                                ...course,
-                                modules: course.modules.filter((m) => m.id !== mod.id),
-                              })
-                            }
-                            className="rounded border border-rose-200 bg-rose-50 p-1 text-rose-600"
-                            title="Delete big section"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                      <input
-                        value={mod.title}
-                        onChange={(e) =>
-                          saveCourse({
-                            ...course,
-                            modules: course.modules.map((m) =>
-                              m.id === mod.id ? { ...m, title: e.target.value } : m
-                            ),
-                          })
-                        }
-                        className="w-full rounded-xl border border-[#ECECF2] bg-white px-3 py-2 text-sm font-bold focus:border-[#6E32F5] focus:outline-none"
-                      />
-                      <textarea
-                        rows={2}
-                        value={mod.description}
-                        onChange={(e) =>
-                          saveCourse({
-                            ...course,
-                            modules: course.modules.map((m) =>
-                              m.id === mod.id ? { ...m, description: e.target.value } : m
-                            ),
-                          })
-                        }
-                        className="w-full rounded-xl border border-[#ECECF2] bg-white p-2.5 text-xs focus:border-[#6E32F5] focus:outline-none"
-                      />
+              return (
+                <div
+                  key={mod.id}
+                  data-testid={`course-module-card-${mod.id}`}
+                  className="overflow-hidden rounded-2xl border border-[#ECECF2] bg-white shadow-2xs"
+                >
+                  <div className="border-b border-[#F2F2F7] bg-[#FAFAFC] px-4 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#848494]">
+                        Module {mIdx + 1}
+                      </span>
+                      <span className="font-mono text-[11px] font-medium text-[#6C6C7D]">
+                        {modDone}/{modLessons.length}
+                      </span>
                     </div>
-                  ) : (
-                    <>
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="cursor-grab text-[#B0B0C0] hover:text-[#6E32F5] active:cursor-grabbing"
-                            title="拖拽调整大章节前后顺序"
-                          >
-                            <GripVertical className="h-4 w-4" />
-                          </span>
-                          <h2
-                            style={getTypographyStyle(mod.titleStyle)}
-                            className={`text-[#111118] ${getTypographyClasses(
-                              mod.titleStyle,
-                              'heading'
-                            )}`}
-                          >
-                            {mod.title}
-                          </h2>
-                        </div>
+                    <h2 className="mt-0.5 text-sm font-semibold text-[#111118]">
+                      {mod.title}
+                    </h2>
+                  </div>
 
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setQuickVideoModId((prev) => (prev === mod.id ? null : mod.id))
-                            }
-                            data-testid={`course-add-video-${mod.id}`}
-                            className="inline-flex items-center gap-1 rounded-xl border border-[#D4C5FD] bg-[#F9F6FF] px-2.5 py-1 text-[11px] font-semibold text-[#6E32F5] transition hover:bg-[#F3ECFF]"
-                          >
-                            <Video className="h-3.5 w-3.5" />
-                            上传视频课
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditMode(true)}
-                            className="inline-flex items-center gap-1 rounded-xl border border-[#ECECF2] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#525260] transition hover:border-[#6E32F5] hover:text-[#111118]"
-                          >
-                            <Edit3 className="h-3 w-3" />
-                            编辑
-                          </button>
-                        </div>
-                      </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-[#848494]">
-                        <span className="inline-flex items-center gap-1">
-                          <LayoutGrid className="h-3.5 w-3.5" />
-                          {mod.subSections.length} {mod.subSections.length === 1 ? 'section' : 'sections'}
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <BookOpen className="h-3.5 w-3.5" />
-                          {modLessonCount} {modLessonCount === 1 ? 'lesson' : 'lessons'}
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <Video className="h-3.5 w-3.5" />
-                          {modVideoCount} {modVideoCount === 1 ? 'video' : 'videos'}
-                        </span>
-                      </div>
-                      {mod.description && (
-                        <p className="mt-2.5 text-sm leading-relaxed text-[#525260]">
-                          {mod.description}
-                        </p>
-                      )}
+                  <div className="divide-y divide-[#F4F4F8]">
+                    {mod.subSections.map((sub) => {
+                      const isCollapsed = Boolean(collapsedSubs[sub.id]);
+                      const hideSubHeader =
+                        mod.subSections.length === 1 &&
+                        sub.title.trim().toLowerCase() === mod.title.trim().toLowerCase();
 
-                      {quickVideoModId === mod.id && (
-                        <form
-                          onSubmit={(e) => handleSaveQuickVideoLesson(e, mod.id)}
-                          className="mt-4 space-y-2.5 rounded-2xl border border-[#D4C5FD] bg-[#FAF8FF] p-4"
-                          data-testid="course-quick-video-form"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-[#6E32F5]">
-                              为「{mod.title}」新增一节独立视频课（含标题与讲解笔记）
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setQuickVideoModId(null)}
-                              className="text-xs text-[#848494] hover:text-[#111118]"
-                            >
-                              取消
-                            </button>
-                          </div>
-                          <input
-                            type="text"
-                            required
-                            value={qvTitle}
-                            onChange={(e) => setQvTitle(e.target.value)}
-                            placeholder="视频课程标题（如 Mock Walkthrough: Pricing Strategy）"
-                            className="w-full rounded-xl border border-[#ECECF2] bg-white px-3 py-2 text-xs font-semibold text-[#111118] focus:border-[#6E32F5] focus:outline-none"
-                          />
-                          <textarea
-                            rows={2}
-                            value={qvNote}
-                            onChange={(e) => setQvNote(e.target.value)}
-                            placeholder="添加讲解说明 / 重点提示（可选，展开后显示在视频下方）"
-                            className="w-full rounded-xl border border-[#ECECF2] bg-white p-2.5 text-xs text-[#111118] focus:border-[#6E32F5] focus:outline-none"
-                          />
-                          <div className="flex flex-wrap items-center gap-2">
-                            <input
-                              type="url"
-                              value={qvVideoUrl}
-                              onChange={(e) => setQvVideoUrl(e.target.value)}
-                              placeholder="粘贴 YouTube 链接，或点击右侧直接上传 MP4 到 R2..."
-                              className="min-w-[220px] flex-1 rounded-xl border border-[#ECECF2] bg-white px-3 py-2 text-xs text-[#111118] focus:border-[#6E32F5] focus:outline-none"
-                            />
-                            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-[#D4C5FD] bg-white px-3 py-2 text-xs font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]">
-                              {qvUploading ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Upload className="h-3.5 w-3.5" />
-                              )}
-                              {qvLocalMediaName ? qvLocalMediaName : '上传 MP4 (R2)'}
-                              <input
-                                type="file"
-                                accept="video/*,.mp4,.webm,.mov"
-                                onChange={handleQuickVideoFileUpload}
-                                className="hidden"
-                              />
-                            </label>
-                            <button
-                              type="submit"
-                              className="rounded-xl bg-[#6E32F5] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#5B24D6]"
-                            >
-                              保存到章节
-                            </button>
-                          </div>
-                        </form>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Sub-Sections (小 Section 折叠区) */}
-              <div className="mt-5 space-y-3">
-                {mod.subSections.map((sub) => {
-                  const isCollapsed = Boolean(collapsedSubs[sub.id]) && !editMode;
-                  const subVideos = sub.lessons.filter(
-                    (l) => l.kind === 'video' || l.videoUrl || l.localMediaId
-                  ).length;
-
-                  const hideRedundantSubHeader =
-                    !editMode &&
-                    mod.subSections.length === 1 &&
-                    sub.title.trim().toLowerCase() === mod.title.trim().toLowerCase();
-
-                  return (
-                    <div
-                      key={sub.id}
-                      className="overflow-hidden rounded-2xl border border-[#ECECF2] bg-white"
-                    >
-                      {/* Sub-section Header (hidden when single subsection repeats module title) */}
-                      {!hideRedundantSubHeader && (
-                        <div className="flex flex-wrap items-center justify-between gap-2 bg-[#FAFAFC] px-4 py-3">
-                        {editMode ? (
-                          <div className="flex w-full flex-wrap items-center justify-between gap-2">
-                            <input
-                              value={sub.title}
-                              onChange={(e) =>
-                                saveCourse({
-                                  ...course,
-                                  modules: course.modules.map((m) =>
-                                    m.id !== mod.id
-                                      ? m
-                                      : {
-                                          ...m,
-                                          subSections: m.subSections.map((s) =>
-                                            s.id === sub.id ? { ...s, title: e.target.value } : s
-                                          ),
-                                        }
-                                  ),
-                                })
-                              }
-                              className="min-w-[200px] flex-1 rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs font-semibold focus:border-[#6E32F5] focus:outline-none"
-                            />
-                            <TypographyPicker
-                              label="Sub"
-                              value={sub.titleStyle}
-                              onChange={(st) =>
-                                saveCourse({
-                                  ...course,
-                                  modules: course.modules.map((m) =>
-                                    m.id !== mod.id
-                                      ? m
-                                      : {
-                                          ...m,
-                                          subSections: m.subSections.map((s) =>
-                                            s.id === sub.id ? { ...s, titleStyle: st } : s
-                                          ),
-                                        }
-                                  ),
-                                })
-                              }
-                            />
-                            <button
-                              type="button"
-                              onClick={() =>
-                                saveCourse({
-                                  ...course,
-                                  modules: course.modules.map((m) =>
-                                    m.id !== mod.id
-                                      ? m
-                                      : {
-                                          ...m,
-                                          subSections: m.subSections.filter((s) => s.id !== sub.id),
-                                        }
-                                  ),
-                                })
-                              }
-                              className="rounded border border-rose-200 bg-rose-50 p-1.5 text-rose-600"
-                              title="Delete sub-section"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <>
+                      return (
+                        <div key={sub.id}>
+                          {!hideSubHeader && (
                             <button
                               type="button"
                               onClick={() =>
@@ -1194,653 +950,973 @@ function CourseSyllabusContent() {
                                   [sub.id]: !prev[sub.id],
                                 }))
                               }
-                              className="flex items-center gap-2 text-left"
+                              className="flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-xs font-semibold text-[#525260] hover:bg-[#FAFAFC]"
                             >
+                              <span className="truncate">{sub.title}</span>
                               {isCollapsed ? (
-                                <ChevronRight className="h-4 w-4 text-[#848494]" />
+                                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#848494]" />
                               ) : (
-                                <ChevronDown className="h-4 w-4 text-[#848494]" />
+                                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[#848494]" />
                               )}
-                              <span
-                                style={getTypographyStyle(sub.titleStyle)}
-                                className={`text-[#111118] ${getTypographyClasses(
-                                  sub.titleStyle,
-                                  'heading'
-                                )}`}
-                              >
-                                {sub.title}
-                              </span>
                             </button>
-                            <span className="text-xs text-[#848494]">
-                              {sub.lessons.length} {sub.lessons.length === 1 ? 'lesson' : 'lessons'}
-                              {subVideos > 0 ? ` · ${subVideos} ${subVideos === 1 ? 'video' : 'videos'}` : ''}
-                            </span>
-                          </>
-                        )}
-                        </div>
-                      )}
+                          )}
 
-                      {/* Lessons List */}
-                      {!isCollapsed && (
-                        <div className="divide-y divide-[#F0F0F5]">
-                          {sub.lessons.map((les) => {
-                            const htmlPage = les.htmlPageId
-                              ? htmlPagesById.get(les.htmlPageId) ?? null
-                              : null;
-                            const isVideo =
-                              les.kind === 'video' ||
-                              Boolean(
-                                htmlPage?.videoUrl ||
-                                  htmlPage?.localMediaId ||
-                                  les.videoUrl ||
-                                  les.localMediaId
-                              );
-                            const isInlineExpandable = Boolean(htmlPage);
-                            const isExpanded = expandedLessonId === les.id;
-                            const targetHref = les.questionId
-                              ? `/questions/${les.questionId}`
-                              : `/questions`;
+                          {!isCollapsed && (
+                            <div className="space-y-0.5 p-1.5">
+                              {sub.lessons.map((les) => {
+                                const isActive = activeLesson?.id === les.id;
+                                const isVideo =
+                                  les.kind === 'video' ||
+                                  Boolean(les.videoUrl || les.localMediaId);
+                                const cleanTitle = les.title.replace(/&amp;/g, '&');
 
-                            const displaySummary = htmlPage
-                              ? extractReadableTextFromHtml(htmlPage.rawHtml).text.slice(0, 180)
-                              : les.summary;
-
-                            const flatIdx = flatLessons.findIndex(
-                              (item) => item.lesson.id === les.id
-                            );
-                            const prevEntry = flatIdx > 0 ? flatLessons[flatIdx - 1] : null;
-                            const nextEntry =
-                              flatIdx >= 0 && flatIdx < flatLessons.length - 1
-                                ? flatLessons[flatIdx + 1]
-                                : null;
-
-                            const rowContent = (
-                              <>
-                                {isVideo ? (
-                                  <div className="relative flex h-11 w-[74px] shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#1C1A29] to-[#2F284D]">
-                                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#6E32F5] text-white">
-                                      <Play className="ml-0.5 h-3 w-3 fill-white" />
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F5F5FA] text-[#525260]">
-                                    {les.kind === 'question' ? (
-                                      <Sparkles className="h-3.5 w-3.5 text-[#6E32F5]" />
-                                    ) : (
-                                      <FileText className="h-3.5 w-3.5" />
-                                    )}
-                                  </div>
-                                )}
-
-                                <div className="min-w-0 flex-1">
-                                  <div className="truncate text-[13.5px] font-medium text-[#111118] hover:text-[#6E32F5]">
-                                    {les.title.replace(/&amp;/g, '&')}
-                                  </div>
-                                  {displaySummary && (
-                                    <div className="truncate text-xs text-[#848494]">
-                                      {displaySummary}
-                                    </div>
-                                  )}
-                                </div>
-                              </>
-                            );
-
-                            return (
-                              <div
-                                key={les.id}
-                                id={`course-lesson-${les.id}`}
-                                draggable={!editMode && !isExpanded}
-                                onDragStart={(e) => {
-                                  if (editMode || isExpanded) return;
-                                  e.stopPropagation();
-                                  setDraggingLesson({
-                                    modId: mod.id,
-                                    subId: sub.id,
-                                    lessonId: les.id,
-                                  });
-                                  e.dataTransfer.effectAllowed = 'move';
-                                  e.dataTransfer.setData('text/plain', `les:${les.id}`);
-                                }}
-                                onDragOver={(e) => {
-                                  if (
-                                    !draggingLesson ||
-                                    draggingLesson.modId !== mod.id ||
-                                    draggingLesson.subId !== sub.id ||
-                                    draggingLesson.lessonId === les.id
-                                  ) {
-                                    return;
-                                  }
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setDragOverLessonId(les.id);
-                                }}
-                                onDragLeave={() => {
-                                  if (dragOverLessonId === les.id) setDragOverLessonId(null);
-                                }}
-                                onDrop={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  if (
-                                    draggingLesson &&
-                                    draggingLesson.modId === mod.id &&
-                                    draggingLesson.subId === sub.id &&
-                                    draggingLesson.lessonId !== les.id
-                                  ) {
-                                    reorderLessons(
-                                      mod.id,
-                                      sub.id,
-                                      draggingLesson.lessonId,
-                                      les.id
-                                    );
-                                  }
-                                  setDraggingLesson(null);
-                                  setDragOverLessonId(null);
-                                }}
-                                onDragEnd={() => {
-                                  setDraggingLesson(null);
-                                  setDragOverLessonId(null);
-                                }}
-                                className={
-                                  dragOverLessonId === les.id
-                                    ? 'bg-[#F3ECFF]/70 ring-1 ring-inset ring-[#6E32F5]/40'
-                                    : ''
-                                }
-                              >
-                                <div className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-[#FAFAFC]">
-                                  {!editMode && !isExpanded && (
-                                    <span
-                                      className="cursor-grab text-[#C8C8D4] hover:text-[#6E32F5] active:cursor-grabbing"
-                                      title="拖拽调整课程前后排序"
-                                    >
-                                      <GripVertical className="h-3.5 w-3.5" />
-                                    </span>
-                                  )}
-                                  {isInlineExpandable ? (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setExpandedLessonId((prev) =>
-                                          prev === les.id ? null : les.id
-                                        )
-                                      }
-                                      data-testid={`course-lesson-toggle-${les.id}`}
-                                      className="flex min-w-0 flex-1 items-center gap-3.5 text-left"
-                                    >
-                                      {rowContent}
-                                    </button>
-                                  ) : (
-                                    <Link
-                                      href={targetHref}
-                                      className="flex min-w-0 flex-1 items-center gap-3.5"
-                                    >
-                                      {rowContent}
-                                    </Link>
-                                  )}
-
-                                  <div className="flex shrink-0 items-center gap-2">
-                                    {isInlineExpandable && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          setExpandedLessonId((prev) =>
-                                            prev === les.id ? null : les.id
-                                          )
-                                        }
-                                        className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#6E32F5] transition hover:border-[#6E32F5]"
-                                      >
-                                        {isExpanded ? '收起' : '展开阅读'}
-                                      </button>
-                                    )}
-                                    {editMode && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          saveCourse({
-                                            ...course,
-                                            modules: course.modules.map((m) =>
-                                              m.id !== mod.id
-                                                ? m
-                                                : {
-                                                    ...m,
-                                                    subSections: m.subSections.map((s) =>
-                                                      s.id !== sub.id
-                                                        ? s
-                                                        : {
-                                                            ...s,
-                                                            lessons: s.lessons.filter(
-                                                              (l) => l.id !== les.id
-                                                            ),
-                                                          }
-                                                    ),
-                                                  }
-                                            ),
-                                          })
-                                        }
-                                        className="rounded p-1 text-[#848494] hover:text-rose-600"
-                                        title="Remove item"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
-                                    )}
-
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        toggleCourseLessonComplete(role, mod.id, sub.id, les.id)
-                                      }
-                                      className={`flex h-6 w-6 items-center justify-center rounded-full transition ${
-                                        les.completed
-                                          ? 'bg-[#F3ECFF] text-[#6E32F5]'
-                                          : 'border border-[#E2E2EC] text-transparent hover:border-[#6E32F5]'
-                                      }`}
-                                      title="Toggle complete"
-                                    >
-                                      <Check className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {/* Inline Expanded Article + Video + Prev/Next */}
-                                {isExpanded && htmlPage && (
+                                return (
                                   <div
-                                    className="border-t border-[#ECECF2] bg-[#FAFAFC] px-4 py-4 space-y-4"
-                                    data-testid="course-inline-reader"
+                                    key={les.id}
+                                    id={`course-lesson-${les.id}`}
+                                    className={`flex items-center gap-2 rounded-xl px-2.5 py-2 transition ${
+                                      isActive
+                                        ? 'bg-[#F4EFFF] text-[#4C1EB8]'
+                                        : 'text-[#2E2E3A] hover:bg-[#F7F7FB]'
+                                    }`}
                                   >
-                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                      <div className="flex items-center gap-2">
-                                        <span className="rounded-md bg-[#F3ECFF] px-2 py-0.5 text-[10px] font-bold text-[#6E32F5]">
-                                          本页阅读
-                                        </span>
-                                        <span className="text-xs font-semibold text-[#111118]">
-                                          {htmlPage.title}
-                                        </span>
-                                      </div>
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        {editingInlineLessonId === les.id ? (
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleSaveInlineArticle(
-                                                htmlPage.id,
-                                                expandedSnapshotHtml || htmlPage.rawHtml
-                                              )
-                                            }
-                                            data-testid="course-inline-save-button"
-                                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
-                                          >
-                                            <Save className="h-3 w-3" />
-                                            保存修改
-                                          </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleCourseLessonComplete(role, mod.id, sub.id, les.id);
+                                      }}
+                                      aria-label={`Mark ${cleanTitle} complete`}
+                                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition ${
+                                        les.completed
+                                          ? 'bg-emerald-600 text-white'
+                                          : 'border border-[#D8D8E4] bg-white text-transparent hover:border-[#6E32F5]'
+                                      }`}
+                                    >
+                                      <Check className="h-3 w-3" />
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => selectLesson(les.id, sub.id)}
+                                      data-testid={`course-lesson-toggle-${les.id}`}
+                                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                    >
+                                      <span className="shrink-0 text-[#848494]">
+                                        {isVideo ? (
+                                          <Play className="h-3.5 w-3.5 text-[#6E32F5]" />
+                                        ) : les.kind === 'question' ? (
+                                          <Sparkles className="h-3.5 w-3.5 text-[#6E32F5]" />
                                         ) : (
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setInlineNotice('');
-                                              setEditingInlineLessonId(les.id);
-                                            }}
-                                            data-testid="course-inline-edit-button"
-                                            className="inline-flex items-center gap-1 rounded-lg border border-[#D4C5FD] bg-[#F9F6FF] px-2.5 py-1 text-[11px] font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]"
-                                          >
-                                            <Edit3 className="h-3 w-3" />
-                                            编辑正文 / 文内插视频
-                                          </button>
+                                          <FileText className="h-3.5 w-3.5" />
                                         )}
-                                        <Link
-                                          href={`/pages/${htmlPage.id}`}
-                                          className="inline-flex items-center gap-1 rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#525260] hover:border-[#6E32F5] hover:text-[#6E32F5]"
-                                        >
-                                          全屏 Studio
-                                          <ExternalLink className="h-3 w-3" />
-                                        </Link>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setEditingInlineLessonId(null);
-                                            setExpandedLessonId(null);
-                                          }}
-                                          className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#525260] hover:text-[#111118]"
-                                        >
-                                          收起全文
-                                        </button>
-                                      </div>
-                                    </div>
-
-                                    {editingInlineLessonId === les.id && (
-                                      <div
-                                        className="space-y-2 rounded-xl border border-[#D4C5FD] bg-white p-3"
-                                        data-testid="course-inline-video-inserter"
-                                      >
-                                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                                          <span className="font-bold text-[#6E32F5]">
-                                            ✏️ 正文已开启直接编辑 · 可在文末插入视频讲解块（含标题与解释）
-                                          </span>
-                                          {inlineNotice && (
-                                            <span className="font-semibold text-emerald-700">
-                                              {inlineNotice}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div className="grid gap-2 sm:grid-cols-2">
-                                          <input
-                                            type="text"
-                                            value={inlineVideoTitle}
-                                            onChange={(e) => setInlineVideoTitle(e.target.value)}
-                                            placeholder="视频小标题（如 Walkthrough 演示）"
-                                            className="rounded-lg border border-[#ECECF2] bg-[#FAFAFC] px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:bg-white focus:outline-none"
-                                          />
-                                          <input
-                                            type="text"
-                                            value={inlineVideoNote}
-                                            onChange={(e) => setInlineVideoNote(e.target.value)}
-                                            placeholder="视频说明 / 重点解释（可选）"
-                                            className="rounded-lg border border-[#ECECF2] bg-[#FAFAFC] px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:bg-white focus:outline-none"
-                                          />
-                                        </div>
-                                        <div className="flex flex-wrap items-center gap-2">
-                                          <input
-                                            type="url"
-                                            value={inlineVideoUrl}
-                                            onChange={(e) => setInlineVideoUrl(e.target.value)}
-                                            placeholder="粘贴 YouTube 链接，或点击右侧上传 MP4 到 R2..."
-                                            className="min-w-[200px] flex-1 rounded-lg border border-[#ECECF2] bg-[#FAFAFC] px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:bg-white focus:outline-none"
-                                          />
-                                          <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-[#D4C5FD] bg-[#F9F6FF] px-2.5 py-1.5 text-[11px] font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]">
-                                            {inlineUploading ? (
-                                              <Loader2 className="h-3 w-3 animate-spin" />
-                                            ) : (
-                                              <Upload className="h-3 w-3" />
-                                            )}
-                                            上传 MP4
-                                            <input
-                                              type="file"
-                                              accept="video/*,.mp4,.webm,.mov"
-                                              onChange={(e) =>
-                                                handleInlineUploadVideo(e, htmlPage.id)
-                                              }
-                                              className="hidden"
-                                            />
-                                          </label>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleInsertVideoIntoArticle(htmlPage.id)
-                                            }
-                                            className="rounded-lg bg-[#6E32F5] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#5B24D6]"
-                                          >
-                                            插入到文章中
-                                          </button>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {(htmlPage.videoUrl ||
-                                      htmlPage.localMediaId ||
-                                      les.videoUrl ||
-                                      les.localMediaId) && (
-                                      <VideoPlayer
-                                        videoUrl={htmlPage.videoUrl || les.videoUrl}
-                                        localMediaId={htmlPage.localMediaId || les.localMediaId}
-                                      />
-                                    )}
-
-                                    <div className="overflow-hidden rounded-2xl border border-[#ECECF2] bg-white shadow-2xs">
-                                      <iframe
-                                        ref={inlineIframeRef}
-                                        title={htmlPage.title}
-                                        srcDoc={
-                                          cleanHtmlForReader(
-                                            expandedSnapshotHtml &&
-                                              expandedSnapshotHtml.length > htmlPage.rawHtml.length
-                                              ? expandedSnapshotHtml
-                                              : htmlPage.rawHtml,
-                                            { editable: editingInlineLessonId === les.id }
-                                          ).cleanHtml
-                                        }
-                                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                                        className="min-h-[68vh] w-full border-0 bg-white"
-                                      />
-                                    </div>
-
-                                    {/* Bottom Prev / Next Navigation */}
-                                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                                      <button
-                                        type="button"
-                                        disabled={!prevEntry}
-                                        onClick={() => prevEntry && jumpToLesson(prevEntry)}
-                                        data-testid="course-prev-lesson"
-                                        className="inline-flex items-center gap-1.5 rounded-xl border border-[#ECECF2] bg-white px-3.5 py-2 text-xs font-semibold text-[#111118] shadow-2xs transition hover:border-[#6E32F5] hover:text-[#6E32F5] disabled:cursor-not-allowed disabled:opacity-40"
-                                      >
-                                        <ArrowLeft className="h-3.5 w-3.5" />
-                                        前一篇
-                                        {prevEntry && (
-                                          <span className="max-w-[160px] truncate text-[11px] font-normal text-[#848494]">
-                                            · {prevEntry.lesson.title}
-                                          </span>
-                                        )}
-                                      </button>
-
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          toggleCourseLessonComplete(role, mod.id, sub.id, les.id)
-                                        }
-                                        className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
-                                          les.completed
-                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                            : 'border border-[#ECECF2] bg-white text-[#525260] hover:border-[#6E32F5]'
+                                      </span>
+                                      <span
+                                        className={`truncate text-xs ${
+                                          isActive ? 'font-semibold' : 'font-medium'
                                         }`}
                                       >
-                                        <Check className="h-3.5 w-3.5" />
-                                        {les.completed ? '已完成本节' : '标记已完成'}
-                                      </button>
-
-                                      <button
-                                        type="button"
-                                        disabled={!nextEntry}
-                                        onClick={() => nextEntry && jumpToLesson(nextEntry)}
-                                        data-testid="course-next-lesson"
-                                        className="inline-flex items-center gap-1.5 rounded-xl bg-[#6E32F5] px-3.5 py-2 text-xs font-semibold text-white shadow-2xs transition hover:bg-[#5B24D6] disabled:cursor-not-allowed disabled:opacity-40"
-                                      >
-                                        下一篇
-                                        {nextEntry && (
-                                          <span className="max-w-[160px] truncate text-[11px] font-normal text-white/80">
-                                            · {nextEntry.lesson.title}
-                                          </span>
-                                        )}
-                                        <ArrowRight className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-
-                          {/* Edit Mode: Inline "+ Add Question / Answer / Video" inside this Sub-Section */}
-                          {editMode && (
-                            <div className="bg-[#FAF9FF] px-4 py-3">
-                              {addingTarget?.moduleId === mod.id &&
-                              addingTarget?.subSectionId === sub.id ? (
-                                <form onSubmit={handleSaveNewLesson} className="space-y-2.5">
-                                  <div className="flex flex-wrap gap-2">
-                                    <select
-                                      value={newLessonKind}
-                                      onChange={(e) =>
-                                        setNewLessonKind(
-                                          e.target.value as 'question' | 'video' | 'lesson'
-                                        )
-                                      }
-                                      className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs font-medium"
-                                    >
-                                      <option value="question">Question + Answer</option>
-                                      <option value="video">Video Lesson / Recording</option>
-                                      <option value="lesson">Text Note / Guide</option>
-                                    </select>
-                                    <input
-                                      required
-                                      value={newLessonTitle}
-                                      onChange={(e) => setNewLessonTitle(e.target.value)}
-                                      placeholder="Title (题目或章节标题)..."
-                                      className="min-w-[220px] flex-1 rounded-lg border border-[#ECECF2] bg-white px-3 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
-                                    />
-                                  </div>
-                                  <textarea
-                                    rows={2}
-                                    value={newLessonPrompt}
-                                    onChange={(e) => setNewLessonPrompt(e.target.value)}
-                                    placeholder="Prompt / Context (题目背景，可选)..."
-                                    className="w-full rounded-lg border border-[#ECECF2] bg-white p-2.5 text-xs focus:border-[#6E32F5] focus:outline-none"
-                                  />
-                                  <textarea
-                                    rows={3}
-                                    value={newLessonAnswer}
-                                    onChange={(e) => setNewLessonAnswer(e.target.value)}
-                                    placeholder="Written Answer / Key Notes (文字答案或要点)..."
-                                    className="w-full rounded-lg border border-[#ECECF2] bg-white p-2.5 text-xs focus:border-[#6E32F5] focus:outline-none"
-                                  />
-                                  <div className="grid gap-2 sm:grid-cols-2">
-                                    <input
-                                      value={newLessonVideoUrl}
-                                      onChange={(e) => setNewLessonVideoUrl(e.target.value)}
-                                      placeholder="Video URL (YouTube / Bilibili / Loom / Lark)..."
-                                      className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
-                                    />
-                                    <label className="flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#D4C5FD] bg-white px-3 py-1.5 text-xs font-medium text-[#6E32F5]">
-                                      {uploadingVideo ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                      ) : (
-                                        <Film className="h-3.5 w-3.5" />
-                                      )}
-                                      <span className="truncate">
-                                        {newLessonLocalMediaName
-                                          ? `Uploaded: ${newLessonLocalMediaName}`
-                                          : 'Upload Video Answer (.mp4 / .webm)'}
+                                        {cleanTitle}
                                       </span>
-                                      <input
-                                        type="file"
-                                        accept="video/*,audio/*"
-                                        onChange={handleLessonVideoUpload}
-                                        className="hidden"
-                                      />
-                                    </label>
-                                  </div>
-                                  <div className="flex justify-end gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => setAddingTarget(null)}
-                                      className="rounded-lg border border-[#ECECF2] bg-white px-3 py-1.5 text-xs text-[#525260]"
-                                    >
-                                      Cancel
-                                    </button>
-                                    <button
-                                      type="submit"
-                                      className="rounded-lg bg-[#6E32F5] px-3.5 py-1.5 text-xs font-semibold text-white"
-                                    >
-                                      Add to Sub-Section
                                     </button>
                                   </div>
-                                </form>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setAddingTarget({ moduleId: mod.id, subSectionId: sub.id })
-                                  }
-                                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#6E32F5] hover:underline"
-                                >
-                                  <Plus className="h-3.5 w-3.5" />
-                                  Add Question / Text Answer / Video Lesson (添加题目或答案)
-                                </button>
-                              )}
+                                );
+                              })}
                             </div>
                           )}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </aside>
 
-                {editMode && (
+          {/* Right 8 Cols: Focused Lesson Stage */}
+          <main className="lg:col-span-8">
+            {activeEntry && activeLesson ? (
+              <div
+                className="overflow-hidden rounded-2xl border border-[#ECECF2] bg-white shadow-2xs"
+                data-testid="course-inline-reader"
+              >
+                {/* Reader Top Header */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#ECECF2] bg-[#FAFAFC] px-6 py-4">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-medium text-[#848494]">
+                      {activeEntry.moduleTitle}
+                      {activeEntry.subSectionTitle !== activeEntry.moduleTitle
+                        ? ` · ${activeEntry.subSectionTitle}`
+                        : ''}
+                    </div>
+                    <h2 className="mt-0.5 text-lg font-semibold text-[#111118]">
+                      {activeLesson.title.replace(/&amp;/g, '&')}
+                    </h2>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleCourseLessonComplete(
+                          role,
+                          activeEntry.moduleId,
+                          activeEntry.subSectionId,
+                          activeLesson.id
+                        )
+                      }
+                      className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+                        activeLesson.completed
+                          ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border border-[#E2E2EC] bg-white text-[#454554] hover:border-[#6E32F5]'
+                      }`}
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      {activeLesson.completed ? 'Completed' : 'Mark Complete'}
+                    </button>
+
+                    {activeHtmlPage && (
+                      <>
+                        {editingInlineArticle ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleSaveInlineArticle(
+                                activeHtmlPage.id,
+                                snapshotHtml || activeHtmlPage.rawHtml
+                              )
+                            }
+                            data-testid="course-inline-save-button"
+                            className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                          >
+                            <Save className="h-3.5 w-3.5" />
+                            Save Changes
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInlineNotice('');
+                              setEditingInlineArticle(true);
+                            }}
+                            data-testid="course-inline-edit-button"
+                            className="inline-flex items-center gap-1 rounded-xl border border-[#E2E2EC] bg-white px-3 py-1.5 text-xs font-medium text-[#454554] hover:border-[#6E32F5] hover:text-[#111118]"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                            Edit Article
+                          </button>
+                        )}
+                        <Link
+                          href={`/pages/${activeHtmlPage.id}`}
+                          className="inline-flex items-center gap-1 rounded-xl border border-[#E2E2EC] bg-white px-3 py-1.5 text-xs font-medium text-[#454554] hover:text-[#111118]"
+                        >
+                          Full Screen
+                          <ExternalLink className="h-3 w-3" />
+                        </Link>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Reader Body */}
+                <div className="space-y-5 p-6">
+                  {editingInlineArticle && activeHtmlPage && (
+                    <div
+                      className="space-y-2.5 rounded-xl border border-[#D4C5FD] bg-[#FAF9FF] p-3.5"
+                      data-testid="course-inline-video-inserter"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="font-semibold text-[#6E32F5]">
+                          Article is now inline-editable. Optional: append a video block below.
+                        </span>
+                        {inlineNotice && (
+                          <span className="font-medium text-emerald-700">{inlineNotice}</span>
+                        )}
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <input
+                          type="text"
+                          value={inlineVideoTitle}
+                          onChange={(e) => setInlineVideoTitle(e.target.value)}
+                          placeholder="Video block title"
+                          className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
+                        />
+                        <input
+                          type="text"
+                          value={inlineVideoNote}
+                          onChange={(e) => setInlineVideoNote(e.target.value)}
+                          placeholder="Short walkthrough caption (optional)"
+                          className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="url"
+                          value={inlineVideoUrl}
+                          onChange={(e) => setInlineVideoUrl(e.target.value)}
+                          placeholder="Paste YouTube URL or upload MP4..."
+                          className="min-w-[200px] flex-1 rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
+                        />
+                        <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-[#D4C5FD] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]">
+                          {inlineUploading ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="h-3.5 w-3.5" />
+                          )}
+                          Upload MP4
+                          <input
+                            type="file"
+                            accept="video/*,.mp4,.webm,.mov"
+                            onChange={(e) => handleInlineUploadVideo(e, activeHtmlPage.id)}
+                            className="hidden"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleInsertVideoIntoArticle(activeHtmlPage.id)}
+                          className="rounded-lg bg-[#6E32F5] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#5B24D6]"
+                        >
+                          Insert Block
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Attached Lesson Video (only shown when a video exists) */}
+                  {(activeHtmlPage?.videoUrl ||
+                    activeHtmlPage?.localMediaId ||
+                    activeLesson.videoUrl ||
+                    activeLesson.localMediaId) && (
+                    <VideoPlayer
+                      videoUrl={activeHtmlPage?.videoUrl || activeLesson.videoUrl}
+                      localMediaId={activeHtmlPage?.localMediaId || activeLesson.localMediaId}
+                      localMediaName={
+                        activeHtmlPage?.localMediaName || activeLesson.localMediaName
+                      }
+                    />
+                  )}
+
+                  {/* Case 1: HTML Article Lesson */}
+                  {activeHtmlPage ? (
+                    <div className="overflow-hidden rounded-xl border border-[#ECECF2] bg-white">
+                      <iframe
+                        ref={inlineIframeRef}
+                        title={activeHtmlPage.title}
+                        srcDoc={
+                          cleanHtmlForReader(
+                            snapshotHtml && snapshotHtml.length > activeHtmlPage.rawHtml.length
+                              ? snapshotHtml
+                              : activeHtmlPage.rawHtml,
+                            { editable: editingInlineArticle }
+                          ).cleanHtml
+                        }
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                        className="h-[70vh] min-h-[560px] w-full border-0 bg-white"
+                      />
+                    </div>
+                  ) : activeQuestion ? (
+                    /* Case 2: Question Lesson Inline Preview */
+                    <div className="space-y-5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${roleBadgeClasses(
+                            activeQuestion.role
+                          )}`}
+                        >
+                          {ROLES_BY_ID[activeQuestion.role].shortLabel}
+                        </span>
+                        <span className="rounded-md bg-[#F4F4F8] px-2 py-0.5 text-[11px] text-[#454554]">
+                          {ROUND_LABELS[activeQuestion.round].en}
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-xs text-[#848494]">
+                          <Clock className="h-3.5 w-3.5" />
+                          {activeQuestion.timeLimitMin}m ·{' '}
+                          {activeQuestion.difficulty.toUpperCase()} ·{' '}
+                          {activeQuestion.companyStyle}
+                        </span>
+                        {activeQuestionStatus === 'mastered' && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Mastered
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wider text-[#6E32F5]">
+                          Interview Prompt
+                        </div>
+                        <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-[#111118]">
+                          {activeQuestionNotes?.customPrompt?.trim() || activeQuestion.prompt}
+                        </p>
+                        {state.aiSettings.language !== 'en' && activeQuestion.promptZhHint && (
+                          <p className="mt-3 rounded-lg bg-amber-50/80 px-3 py-2 text-xs text-amber-950">
+                            {activeQuestion.promptZhHint}
+                          </p>
+                        )}
+                      </div>
+
+                      {(activeQuestionNotes?.myAnswer?.trim() ||
+                        activeQuestionNotes?.modelAnswer?.trim() ||
+                        activeQuestion.modelAnswer?.trim()) && (
+                        <div className="rounded-xl border border-[#ECECF2] bg-white p-4">
+                          <div className="text-[11px] font-semibold uppercase tracking-wider text-[#525260]">
+                            {activeQuestionNotes?.myAnswer?.trim()
+                              ? 'Your Saved Draft'
+                              : 'Reference Approach'}
+                          </div>
+                          <p className="mt-2 whitespace-pre-wrap text-[13.5px] leading-relaxed text-[#2E2E3A] line-clamp-[12]">
+                            {activeQuestionNotes?.myAnswer?.trim() ||
+                              activeQuestionNotes?.modelAnswer?.trim() ||
+                              activeQuestion.modelAnswer?.trim()}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="rounded-xl border border-[#ECECF2] bg-white p-4">
+                          <div className="text-[11px] font-semibold uppercase tracking-wider text-[#525260]">
+                            Framework Steps
+                          </div>
+                          <ol className="mt-2.5 space-y-1.5 text-xs text-[#454554]">
+                            {activeQuestion.frameworkSteps.map((st, idx) => (
+                              <li key={idx} className="leading-relaxed">
+                                <span className="font-mono font-semibold text-[#111118]">
+                                  {idx + 1}.
+                                </span>{' '}
+                                {st}
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
+
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50/30 p-4">
+                          <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-800">
+                            Strong Hire Signals
+                          </div>
+                          <ul className="mt-2.5 space-y-1.5 text-xs text-emerald-950">
+                            {activeQuestion.strongHireSignals.map((sig, idx) => (
+                              <li key={idx}>✓ {sig}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                        <Link
+                          href={`/questions/${activeQuestion.id}`}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-[#6E32F5] px-4 py-2 text-xs font-semibold text-white hover:bg-[#5B24D6]"
+                        >
+                          <BookOpen className="h-3.5 w-3.5" />
+                          Open Answer Studio
+                        </Link>
+                        <Link
+                          href={`/practice/${activeQuestion.id}`}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-[#111118] px-4 py-2 text-xs font-semibold text-white hover:opacity-90"
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                          Enter Mock Room
+                        </Link>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Case 3: Standalone Note / Video Lesson */
+                    <div className="rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-5 text-sm leading-relaxed text-[#2E2E3A]">
+                      {activeLesson.summary ||
+                        'Switch to Edit Syllabus mode to add lesson notes, questions, or an attached video.'}
+                    </div>
+                  )}
+                </div>
+
+                {/* Reader Footer Prev / Next */}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#ECECF2] bg-[#FAFAFC] px-6 py-3.5">
+                  <button
+                    type="button"
+                    disabled={!prevEntry}
+                    onClick={() =>
+                      prevEntry && selectLesson(prevEntry.lesson.id, prevEntry.subSectionId)
+                    }
+                    data-testid="course-prev-lesson"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-[#ECECF2] bg-white px-3.5 py-2 text-xs font-semibold text-[#111118] transition hover:border-[#6E32F5] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                    Previous
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!nextEntry}
+                    onClick={() =>
+                      nextEntry && selectLesson(nextEntry.lesson.id, nextEntry.subSectionId)
+                    }
+                    data-testid="course-next-lesson"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#111118] px-4 py-2 text-xs font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Next Lesson
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-[#DCDCE6] bg-white p-12 text-center text-sm text-[#848494]">
+                No lessons in this syllabus yet. Click &ldquo;Edit Syllabus&rdquo; above to add modules and lessons.
+              </div>
+            )}
+          </main>
+        </div>
+      ) : (
+        /* Edit Syllabus Mode (Full CMS Controls) */
+        <div className="space-y-6">
+          {course.modules.map((mod, mIdx) => {
+            const modLessonCount = mod.subSections.reduce((s, sub) => s + sub.lessons.length, 0);
+            const modVideoCount = mod.subSections.reduce(
+              (s, sub) =>
+                s +
+                sub.lessons.filter((l) => l.kind === 'video' || l.videoUrl || l.localMediaId)
+                  .length,
+              0
+            );
+
+            return (
+              <section
+                key={mod.id}
+                onDragOver={(e) => {
+                  if (!draggingModuleId || draggingModuleId === mod.id) return;
+                  e.preventDefault();
+                  setDragOverModuleId(mod.id);
+                }}
+                onDragLeave={() => {
+                  if (dragOverModuleId === mod.id) setDragOverModuleId(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (draggingModuleId && draggingModuleId !== mod.id) {
+                    reorderModules(draggingModuleId, mod.id);
+                  }
+                  setDraggingModuleId(null);
+                  setDragOverModuleId(null);
+                }}
+                data-testid={`course-module-card-${mod.id}`}
+                className={`rounded-2xl border bg-white p-6 shadow-2xs transition ${
+                  dragOverModuleId === mod.id
+                    ? 'border-[#6E32F5] ring-2 ring-[#6E32F5]/25'
+                    : 'border-[#ECECF2]'
+                }`}
+              >
+                <div
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggingModuleId(mod.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', `mod:${mod.id}`);
+                  }}
+                  onDragEnd={() => {
+                    setDraggingModuleId(null);
+                    setDragOverModuleId(null);
+                  }}
+                  data-testid={`course-module-drag-handle-${mod.id}`}
+                  className="space-y-3 rounded-2xl border border-[#D4C5FD] bg-[#FAF9FF] p-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <GripVertical className="h-4 w-4 cursor-grab text-[#848494]" />
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-[#6E32F5]">
+                        Module #{mIdx + 1}
+                      </span>
+                      <span className="text-xs text-[#848494]">
+                        · {mod.subSections.length}{' '}
+                        {mod.subSections.length === 1 ? 'section' : 'sections'} ·{' '}
+                        {modLessonCount} {modLessonCount === 1 ? 'lesson' : 'lessons'} ·{' '}
+                        {modVideoCount} {modVideoCount === 1 ? 'video' : 'videos'}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setQuickVideoModId((prev) => (prev === mod.id ? null : mod.id))
+                        }
+                        data-testid={`course-add-video-${mod.id}`}
+                        className="inline-flex items-center gap-1 rounded-lg border border-[#D4C5FD] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]"
+                      >
+                        <Video className="h-3 w-3" />
+                        Add Video Lesson
+                      </button>
+                      <TypographyPicker
+                        value={mod.titleStyle}
+                        onChange={(st) =>
+                          saveCourse({
+                            ...course,
+                            modules: course.modules.map((m) =>
+                              m.id === mod.id ? { ...m, titleStyle: st } : m
+                            ),
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        onClick={() => moveModule(mIdx, -1)}
+                        className="rounded border border-[#ECECF2] bg-white p-1 text-[#525260] hover:text-[#111118]"
+                        title="Move up"
+                      >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveModule(mIdx, 1)}
+                        className="rounded border border-[#ECECF2] bg-white p-1 text-[#525260] hover:text-[#111118]"
+                        title="Move down"
+                      >
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          saveCourse({
+                            ...course,
+                            modules: course.modules.filter((m) => m.id !== mod.id),
+                          })
+                        }
+                        className="rounded border border-rose-200 bg-rose-50 p-1 text-rose-600"
+                        title="Delete module"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <input
+                    value={mod.title}
+                    onChange={(e) =>
+                      saveCourse({
+                        ...course,
+                        modules: course.modules.map((m) =>
+                          m.id === mod.id ? { ...m, title: e.target.value } : m
+                        ),
+                      })
+                    }
+                    className="w-full rounded-xl border border-[#ECECF2] bg-white px-3 py-2 text-sm font-bold focus:border-[#6E32F5] focus:outline-none"
+                  />
+                  <textarea
+                    rows={2}
+                    value={mod.description}
+                    onChange={(e) =>
+                      saveCourse({
+                        ...course,
+                        modules: course.modules.map((m) =>
+                          m.id === mod.id ? { ...m, description: e.target.value } : m
+                        ),
+                      })
+                    }
+                    className="w-full rounded-xl border border-[#ECECF2] bg-white p-2.5 text-xs focus:border-[#6E32F5] focus:outline-none"
+                  />
+
+                  {quickVideoModId === mod.id && (
+                    <form
+                      onSubmit={(e) => handleSaveQuickVideoLesson(e, mod.id)}
+                      className="space-y-2.5 rounded-xl border border-[#D4C5FD] bg-white p-3.5"
+                      data-testid="course-quick-video-form"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-[#6E32F5]">
+                          Add Standalone Video Lesson to &ldquo;{mod.title}&rdquo;
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setQuickVideoModId(null)}
+                          className="text-xs text-[#848494] hover:text-[#111118]"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={qvTitle}
+                        onChange={(e) => setQvTitle(e.target.value)}
+                        placeholder="Lesson title (e.g. Mock Walkthrough: Pricing Strategy)"
+                        className="w-full rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-3 py-2 text-xs font-semibold text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none"
+                      />
+                      <textarea
+                        rows={2}
+                        value={qvNote}
+                        onChange={(e) => setQvNote(e.target.value)}
+                        placeholder="Key takeaways or walkthrough notes (optional)"
+                        className="w-full rounded-xl border border-[#ECECF2] bg-[#FAFAFC] p-2.5 text-xs text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none"
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="url"
+                          value={qvVideoUrl}
+                          onChange={(e) => setQvVideoUrl(e.target.value)}
+                          placeholder="Paste YouTube URL or upload MP4..."
+                          className="min-w-[220px] flex-1 rounded-xl border border-[#ECECF2] bg-[#FAFAFC] px-3 py-2 text-xs text-[#111118] focus:border-[#6E32F5] focus:bg-white focus:outline-none"
+                        />
+                        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-[#D4C5FD] bg-white px-3 py-2 text-xs font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]">
+                          {qvUploading ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="h-3.5 w-3.5" />
+                          )}
+                          {qvLocalMediaName ? qvLocalMediaName : 'Upload MP4'}
+                          <input
+                            type="file"
+                            accept="video/*,.mp4,.webm,.mov"
+                            onChange={handleQuickVideoFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          className="rounded-xl bg-[#6E32F5] px-4 py-2 text-xs font-semibold text-white hover:bg-[#5B24D6]"
+                        >
+                          Add Lesson
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+
+                {/* Sub-sections inside Edit Mode */}
+                <div className="mt-4 space-y-3">
+                  {mod.subSections.map((sub) => (
+                    <div
+                      key={sub.id}
+                      className="overflow-hidden rounded-xl border border-[#ECECF2] bg-white"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 bg-[#FAFAFC] px-4 py-2.5">
+                        <input
+                          value={sub.title}
+                          onChange={(e) =>
+                            saveCourse({
+                              ...course,
+                              modules: course.modules.map((m) =>
+                                m.id !== mod.id
+                                  ? m
+                                  : {
+                                      ...m,
+                                      subSections: m.subSections.map((s) =>
+                                        s.id === sub.id ? { ...s, title: e.target.value } : s
+                                      ),
+                                    }
+                              ),
+                            })
+                          }
+                          className="min-w-[200px] flex-1 rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs font-semibold focus:border-[#6E32F5] focus:outline-none"
+                        />
+                        <TypographyPicker
+                          label="Sub"
+                          value={sub.titleStyle}
+                          onChange={(st) =>
+                            saveCourse({
+                              ...course,
+                              modules: course.modules.map((m) =>
+                                m.id !== mod.id
+                                  ? m
+                                  : {
+                                      ...m,
+                                      subSections: m.subSections.map((s) =>
+                                        s.id === sub.id ? { ...s, titleStyle: st } : s
+                                      ),
+                                    }
+                              ),
+                            })
+                          }
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            saveCourse({
+                              ...course,
+                              modules: course.modules.map((m) =>
+                                m.id !== mod.id
+                                  ? m
+                                  : {
+                                      ...m,
+                                      subSections: m.subSections.filter((s) => s.id !== sub.id),
+                                    }
+                              ),
+                            })
+                          }
+                          className="rounded border border-rose-200 bg-rose-50 p-1.5 text-rose-600"
+                          title="Delete sub-section"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="divide-y divide-[#F0F0F5]">
+                        {sub.lessons.map((les) => (
+                          <div
+                            key={les.id}
+                            draggable
+                            onDragStart={(e) => {
+                              e.stopPropagation();
+                              setDraggingLesson({
+                                modId: mod.id,
+                                subId: sub.id,
+                                lessonId: les.id,
+                              });
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.dataTransfer.setData('text/plain', `les:${les.id}`);
+                            }}
+                            onDragOver={(e) => {
+                              if (
+                                !draggingLesson ||
+                                draggingLesson.modId !== mod.id ||
+                                draggingLesson.subId !== sub.id ||
+                                draggingLesson.lessonId === les.id
+                              ) {
+                                return;
+                              }
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setDragOverLessonId(les.id);
+                            }}
+                            onDragLeave={() => {
+                              if (dragOverLessonId === les.id) setDragOverLessonId(null);
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (
+                                draggingLesson &&
+                                draggingLesson.modId === mod.id &&
+                                draggingLesson.subId === sub.id &&
+                                draggingLesson.lessonId !== les.id
+                              ) {
+                                reorderLessons(
+                                  mod.id,
+                                  sub.id,
+                                  draggingLesson.lessonId,
+                                  les.id
+                                );
+                              }
+                              setDraggingLesson(null);
+                              setDragOverLessonId(null);
+                            }}
+                            onDragEnd={() => {
+                              setDraggingLesson(null);
+                              setDragOverLessonId(null);
+                            }}
+                            className={`flex items-center justify-between gap-3 px-4 py-2.5 ${
+                              dragOverLessonId === les.id ? 'bg-[#F3ECFF]/70' : ''
+                            }`}
+                          >
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-[#C8C8D4]" />
+                              <span className="truncate text-xs font-medium text-[#111118]">
+                                {les.title.replace(/&amp;/g, '&')}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                saveCourse({
+                                  ...course,
+                                  modules: course.modules.map((m) =>
+                                    m.id !== mod.id
+                                      ? m
+                                      : {
+                                          ...m,
+                                          subSections: m.subSections.map((s) =>
+                                            s.id !== sub.id
+                                              ? s
+                                              : {
+                                                  ...s,
+                                                  lessons: s.lessons.filter((l) => l.id !== les.id),
+                                                }
+                                          ),
+                                        }
+                                  ),
+                                })
+                              }
+                              className="rounded p-1 text-[#848494] hover:text-rose-600"
+                              title="Remove lesson"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+
+                        <div className="bg-[#FAF9FF] px-4 py-3">
+                          {addingTarget?.moduleId === mod.id &&
+                          addingTarget?.subSectionId === sub.id ? (
+                            <form onSubmit={handleSaveNewLesson} className="space-y-2.5">
+                              <div className="flex flex-wrap gap-2">
+                                <select
+                                  value={newLessonKind}
+                                  onChange={(e) =>
+                                    setNewLessonKind(
+                                      e.target.value as 'question' | 'video' | 'lesson'
+                                    )
+                                  }
+                                  className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs font-medium"
+                                >
+                                  <option value="question">Question + Answer</option>
+                                  <option value="video">Video Lesson</option>
+                                  <option value="lesson">Text Note / Guide</option>
+                                </select>
+                                <input
+                                  required
+                                  value={newLessonTitle}
+                                  onChange={(e) => setNewLessonTitle(e.target.value)}
+                                  placeholder="Lesson or question title..."
+                                  className="min-w-[220px] flex-1 rounded-lg border border-[#ECECF2] bg-white px-3 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
+                                />
+                              </div>
+                              <textarea
+                                rows={2}
+                                value={newLessonPrompt}
+                                onChange={(e) => setNewLessonPrompt(e.target.value)}
+                                placeholder="Prompt or context (optional)..."
+                                className="w-full rounded-lg border border-[#ECECF2] bg-white p-2.5 text-xs focus:border-[#6E32F5] focus:outline-none"
+                              />
+                              <textarea
+                                rows={3}
+                                value={newLessonAnswer}
+                                onChange={(e) => setNewLessonAnswer(e.target.value)}
+                                placeholder="Written answer or key notes (optional)..."
+                                className="w-full rounded-lg border border-[#ECECF2] bg-white p-2.5 text-xs focus:border-[#6E32F5] focus:outline-none"
+                              />
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <input
+                                  value={newLessonVideoUrl}
+                                  onChange={(e) => setNewLessonVideoUrl(e.target.value)}
+                                  placeholder="Video URL (YouTube / Bilibili / Loom / Lark)..."
+                                  className="rounded-lg border border-[#ECECF2] bg-white px-2.5 py-1.5 text-xs focus:border-[#6E32F5] focus:outline-none"
+                                />
+                                <label className="flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#D4C5FD] bg-white px-3 py-1.5 text-xs font-medium text-[#6E32F5]">
+                                  {uploadingVideo ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Film className="h-3.5 w-3.5" />
+                                  )}
+                                  <span className="truncate">
+                                    {newLessonLocalMediaName
+                                      ? `Uploaded: ${newLessonLocalMediaName}`
+                                      : 'Upload Video (.mp4 / .webm)'}
+                                  </span>
+                                  <input
+                                    type="file"
+                                    accept="video/*,audio/*"
+                                    onChange={handleLessonVideoUpload}
+                                    className="hidden"
+                                  />
+                                </label>
+                              </div>
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setAddingTarget(null)}
+                                  className="rounded-lg border border-[#ECECF2] bg-white px-3 py-1.5 text-xs text-[#525260]"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="submit"
+                                  className="rounded-lg bg-[#6E32F5] px-3.5 py-1.5 text-xs font-semibold text-white"
+                                >
+                                  Add Lesson
+                                </button>
+                              </div>
+                            </form>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAddingTarget({ moduleId: mod.id, subSectionId: sub.id })
+                              }
+                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#6E32F5] hover:underline"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              Add Question / Note / Video Lesson
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
                   <button
                     type="button"
                     onClick={() => handleAddSubSection(mod.id)}
                     className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-[#D4C5FD] bg-[#FAF9FF] px-3.5 py-2 text-xs font-semibold text-[#6E32F5] hover:bg-[#F3ECFF]"
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    Add Sub-Section (添加小节标题)
+                    Add Sub-Section
                   </button>
-                )}
-              </div>
-            </section>
-          );
-        })}
-      </div>
+                </div>
+              </section>
+            );
+          })}
 
-      {/* Add Big Module Button in Edit Mode */}
-      {editMode && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-[#D4C5FD] bg-[#FAF9FF] p-5">
-          <button
-            type="button"
-            onClick={handleAddBigModule}
-            className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-semibold text-[#6E32F5] ring-1 ring-[#D4C5FD] hover:bg-[#F3ECFF]"
-          >
-            <Plus className="h-4 w-4" />
-            Add Big Section Module (添加大标题模块)
-          </button>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-[#D4C5FD] bg-[#FAF9FF] p-5">
+            <button
+              type="button"
+              onClick={handleAddBigModule}
+              className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-xs font-semibold text-[#6E32F5] ring-1 ring-[#D4C5FD] hover:bg-[#F3ECFF]"
+            >
+              <Plus className="h-4 w-4" />
+              Add Module
+            </button>
 
-          <button
-            type="button"
-            onClick={handleTogglePublish}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#6E32F5] px-5 py-2.5 text-xs font-semibold text-white shadow-xs hover:opacity-95"
-          >
-            <Rocket className="h-4 w-4" />
-            Publish Course Page (发布更新)
-          </button>
+            <button
+              type="button"
+              onClick={handleToggleEditMode}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#111118] px-5 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90"
+            >
+              <Check className="h-4 w-4" />
+              Done Editing
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Auto-linked Custom & Lark-Imported Questions for This Role */}
+      {/* Unlinked Custom & Lark-Imported Questions for This Track */}
       {unlinkedCustomQuestions.length > 0 && (
-        <section className="rounded-3xl border border-[#ECECF2] bg-white p-6 shadow-[0_1px_2px_rgba(16,16,24,0.03)]">
-          <div className="flex items-center justify-between">
+        <section className="rounded-2xl border border-[#ECECF2] bg-white p-5 shadow-2xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-base font-bold text-[#111118]">
-                Custom &amp; Lark-Imported {roleCfg.shortLabel} Questions ({unlinkedCustomQuestions.length})
+              <h2 className="text-sm font-semibold text-[#111118]">
+                Custom &amp; Imported {roleCfg.shortLabel} Questions ({unlinkedCustomQuestions.length})
               </h2>
               <p className="text-xs text-[#848494]">
-                自动关联你从飞书导入或手动添加的同岗位题目，点击即可编辑答案、上传视频或进入模拟。
+                Role-matched prompts imported from Lark or added directly to your bank.
               </p>
             </div>
             <Link
               href={`/questions?role=${role}`}
-              className="text-xs font-semibold text-[#6E32F5] hover:underline"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-[#6E32F5] hover:underline"
             >
-              View in Question Bank →
+              View in Question Bank
+              <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
 
-          <div className="mt-4 divide-y divide-[#F0F0F5]">
+          <div className="mt-3 divide-y divide-[#F0F0F5]">
             {unlinkedCustomQuestions.map((q) => (
               <div
                 key={q.id}
-                className="flex flex-wrap items-center justify-between gap-3 py-3"
+                className="flex flex-wrap items-center justify-between gap-3 py-2.5"
               >
                 <Link
                   href={`/questions/${q.id}`}
-                  className="min-w-0 flex-1 truncate text-sm font-medium text-[#111118] hover:text-[#6E32F5]"
+                  className="min-w-0 flex-1 truncate text-xs font-medium text-[#111118] hover:text-[#6E32F5]"
                 >
                   {q.title}
                 </Link>
                 <div className="flex items-center gap-2">
                   <Link
                     href={`/questions/${q.id}`}
-                    className="rounded-lg border border-[#ECECF2] px-3 py-1 text-xs font-medium text-[#525260] hover:border-[#6E32F5] hover:text-[#6E32F5]"
+                    className="rounded-lg border border-[#ECECF2] px-2.5 py-1 text-xs font-medium text-[#525260] hover:border-[#6E32F5] hover:text-[#111118]"
                   >
-                    Study &amp; Edit
+                    Study
                   </Link>
                   <Link
                     href={`/practice/${q.id}`}
-                    className="rounded-lg bg-[#6E32F5] px-3 py-1 text-xs font-semibold text-white"
+                    className="rounded-lg bg-[#111118] px-2.5 py-1 text-xs font-semibold text-white hover:opacity-90"
                   >
                     Mock
                   </Link>
