@@ -271,6 +271,8 @@ export interface CourseLessonItem {
   localMediaId?: string;
   localMediaName?: string;
   summary?: string;
+  content?: string;
+  contentHtml?: string;
   completed?: boolean;
   published: boolean;
 }

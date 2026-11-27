@@ -13,9 +13,9 @@ interface TypographyPickerProps {
 
 export function TypographyPicker({ value, onChange, label }: TypographyPickerProps) {
   return (
-    <div className="inline-flex flex-wrap items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[#FAF9FF] px-2 py-1 text-[11px]">
-      <span className="inline-flex items-center gap-1 font-medium text-[var(--ink-muted)]">
-        <Type className="h-3 w-3 text-[var(--accent)]" />
+    <div className="inline-flex flex-wrap items-center gap-1.5 rounded-lg border border-[#CFD4E0] bg-[#F3F4F8] px-2.5 py-1 text-[11px]">
+      <span className="inline-flex items-center gap-1 font-semibold text-[#475467]">
+        <Type className="h-3 w-3 text-[#6E32F5]" />
         {label || 'Style'}:
       </span>
 
@@ -24,7 +24,7 @@ export function TypographyPicker({ value, onChange, label }: TypographyPickerPro
         onChange={(e) =>
           onChange({ ...value, fontFamily: e.target.value as FontFamilyChoice })
         }
-        className="rounded border border-[var(--border)] bg-white px-1.5 py-0.5 text-[11px] font-medium text-[var(--ink-primary)] focus:border-[var(--accent)] focus:outline-none"
+        className="rounded border border-[#CBD0DC] bg-white px-2 py-0.5 text-[11px] font-medium text-[#111118] focus:border-[#6E32F5] focus:outline-none"
         aria-label="Font family"
       >
         {FONT_FAMILY_OPTIONS.map((opt) => (
@@ -34,7 +34,7 @@ export function TypographyPicker({ value, onChange, label }: TypographyPickerPro
         ))}
       </select>
 
-      <div className="flex items-center rounded border border-[var(--border)] bg-white p-0.5">
+      <div className="flex items-center gap-0.5 rounded border border-[#CBD0DC] bg-white p-0.5">
         {FONT_SIZE_OPTIONS.map((sz) => {
           const active = value.fontSize === sz.id;
           return (
@@ -44,8 +44,8 @@ export function TypographyPicker({ value, onChange, label }: TypographyPickerPro
               onClick={() => onChange({ ...value, fontSize: sz.id as FontSizeChoice })}
               className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition ${
                 active
-                  ? 'bg-[var(--accent)] text-white'
-                  : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+                  ? 'bg-[#6E32F5] text-white shadow-2xs'
+                  : 'text-[#475467] hover:bg-[#ECEEF5] hover:text-[#111118]'
               }`}
             >
               {sz.label}
