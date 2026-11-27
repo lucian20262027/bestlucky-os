@@ -26,6 +26,8 @@ import {
   Lock,
   Menu,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   Rocket,
   RotateCcw,
@@ -69,7 +71,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   });
   const [flyout, setFlyout] = useState<'courses' | 'questions' | 'stories' | null>(null);
   const [coursesEditMode, setCoursesEditMode] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const closeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem('bestlucky_sidebar_collapsed') === '1') {
+        setSidebarCollapsed(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const toggleSidebar = React.useCallback(() => {
+    setFlyout(null);
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem('bestlucky_sidebar_collapsed', next ? '1' : '0');
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const refreshLock = () => {
@@ -96,6 +122,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
         e.preventDefault();
         setCopilotOpen((v) => !v);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+        e.preventDefault();
+        toggleSidebar();
       }
       if (e.key === 'Escape') {
         setFlyout(null);
@@ -328,8 +358,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
       </div>
 
-      {/* Bottom Profile & Settings Bar */}
-      <div className="mt-3 border-t border-[#ECECF2] pt-3">
+      {/* Bottom Collapse Toggle + Profile & Settings Bar */}
+      <div className="mt-2">
+        <div className="hidden justify-end pb-2 lg:flex">
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            data-testid="sidebar-collapse-button"
+            title="Collapse sidebar (⌘\)"
+            aria-label="Collapse sidebar"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-[#E6E8F0] bg-[#FAFAFC] text-[#525260] transition hover:border-[#6E32F5] hover:bg-[#F5F3FF] hover:text-[#6E32F5]"
+          >
+            <PanelLeftClose className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div className="border-t border-[#ECECF2] pt-3">
         <div className="flex items-center justify-between gap-1 rounded-xl px-1 py-1">
           <button
             type="button"
@@ -394,13 +438,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </div>
+      </div>
     </div>
   );
 
   return (
     <div className="flex min-h-screen bg-[var(--canvas)] text-[var(--ink-primary)]">
       {/* Desktop Sidebar + Floating Flyouts */}
-      <aside className="relative hidden w-[244px] shrink-0 border-r border-[#ECECF2] bg-white lg:block">
+      <aside
+        className={`relative hidden w-[244px] shrink-0 border-r border-[#ECECF2] bg-white ${
+          sidebarCollapsed ? 'lg:hidden' : 'lg:block'
+        }`}
+      >
         <div className="sticky top-0 h-screen">{sidebarContent}</div>
 
         {flyout && (
@@ -663,12 +712,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <main
           className={`flex-1 ${
-            isMockRoomRoute ? 'p-0' : 'mx-auto w-full max-w-[1260px] px-4 py-7 pb-16 sm:px-9 sm:py-8 sm:pb-16'
+            isMockRoomRoute
+              ? 'p-0'
+              : `mx-auto w-full px-4 py-7 pb-16 sm:px-9 sm:py-8 sm:pb-16 ${
+                  sidebarCollapsed ? 'max-w-[1440px]' : 'max-w-[1260px]'
+                }`
           }`}
         >
           {children}
         </main>
       </div>
+
+      {sidebarCollapsed && (
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          data-testid="sidebar-expand-button"
+          title="Expand sidebar (⌘\)"
+          aria-label="Expand sidebar"
+          className="fixed bottom-4 left-4 z-40 hidden items-center gap-1.5 rounded-xl border border-[#D4D8E4] bg-white/95 px-2.5 py-2 text-xs font-semibold text-[#344054] shadow-md backdrop-blur-xs transition hover:border-[#6E32F5] hover:text-[#6E32F5] lg:inline-flex"
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+        </button>
+      )}
 
       <HeroMantraModal open={heroMantraOpen} onClose={() => setHeroMantraOpen(false)} />
       <SettingsModal />
